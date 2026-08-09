@@ -24,16 +24,48 @@ the cap lives in a policy engine rather than in application code.
 v1 needs only the request in front of it. v2 needs to know what was paid before,
 and policy engines are usually built to remember nothing at all.
 
-That gap matters because agents work in steps. An agent handed a $500 refund it
-cannot pay at once pays $100 five times: every payment is inside the cap, the
-rule is never broken, and $500 goes out. Only a temporal rule catches it.
+That gap matters because agents work in steps. Handed a $500 refund it cannot
+pay at once, an agent pays $100 five times:
 
-**What this repo demonstrates:** Dogwood states v2 in the policy file, because
-its policies read an event log. Cedar cannot — a Cedar decision is a pure
-function of the request, the policies and the entity store, and none of those is
-history. So the rule splits: your code computes the rolling total, the policy
-compares it to the cap, and from then on the rule holds only while both halves
-agree. What that costs, in files and in what can be tested, is the measurement.
+```mermaid
+flowchart LR
+    T["$500 refund<br/>one task"]
+    T --> P1["pay $100 ALLOW<br/>paid: $100"]
+    P1 --> P2["pay $100 ALLOW<br/>paid: $200"]
+    P2 --> P3["pay $100 ALLOW<br/>paid: $300"]
+    P3 --> P4["pay $100 ALLOW<br/>paid: $400"]
+    P4 --> P5["pay $100 ALLOW<br/>paid: $500"]
+    P5 --> OUT["$500 out the door<br/>cap never breached"]
+```
+
+Every payment is inside the cap. The rule was never broken — it was satisfied
+five times, and nothing in the system was ever in a position to see the total.
+Only a temporal rule catches it.
+
+## What this repo demonstrates
+
+Dogwood states v2 in the policy file, because its policies read an event log.
+Cedar cannot: a Cedar decision is a pure function of the request, the policies
+and the entity store, and none of those is history. So the rule splits in two —
+your code computes the rolling total, the policy compares it to the cap — and
+from then on it holds only while both halves agree.
+
+```mermaid
+flowchart LR
+    subgraph cedar ["CEDAR: the counting happens outside the engine"]
+        direction TB
+        CL["your code<br/>sums the last 60 minutes"] -->|"$60, a number"| CP["the policy<br/>compares it to the cap<br/>trusts the number"]
+    end
+    subgraph dogwood ["DOGWOOD: the counting happens inside the engine"]
+        direction TB
+        DL["your event log<br/>one record per payment"] -->|"the raw events"| DP["the policy<br/>sums it and compares<br/>trusts the log"]
+    end
+    cedar ~~~ dogwood
+```
+
+Neither engine escapes trust; they place it differently. Cedar trusts a number
+you computed, Dogwood trusts the log you kept. What the split costs Cedar — in
+files, and in what can be unit tested — is the measurement.
 
 ## Setup
 
