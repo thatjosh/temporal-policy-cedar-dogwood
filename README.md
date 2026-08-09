@@ -27,20 +27,12 @@ and policy engines are usually built to remember nothing at all.
 That gap matters because agents work in steps. Handed a $500 refund it cannot
 pay at once, an agent pays $100 five times:
 
-```mermaid
-flowchart LR
-    T["$500 refund<br/>one task"]
-    T --> P1["pay $100 ALLOW<br/>paid: $100"]
-    P1 --> P2["pay $100 ALLOW<br/>paid: $200"]
-    P2 --> P3["pay $100 ALLOW<br/>paid: $300"]
-    P3 --> P4["pay $100 ALLOW<br/>paid: $400"]
-    P4 --> P5["pay $100 ALLOW<br/>paid: $500"]
-    P5 --> OUT["$500 out the door<br/>cap never breached"]
-```
+![A $500 claim is split by the agent into five payments of $100. Each is checked
+against the $100 rule and approved. The running total climbs to $500, crossing
+the $100 escalation threshold, which never fires because no single payment
+exceeded it.](docs/img/salami-slice.png)
 
-Every payment is inside the cap. The rule was never broken — it was satisfied
-five times, and nothing in the system was ever in a position to see the total.
-Only a temporal rule catches it.
+Only a temporal rule catches this.
 
 ## What this repo demonstrates
 
@@ -50,22 +42,20 @@ and the entity store, and none of those is history. So the rule splits in two �
 your code computes the rolling total, the policy compares it to the cap — and
 from then on it holds only while both halves agree.
 
-```mermaid
-flowchart LR
-    subgraph cedar ["CEDAR: the counting happens outside the engine"]
-        direction TB
-        CL["your code<br/>sums the last 60 minutes"] -->|"$60, a number"| CP["the policy<br/>compares it to the cap<br/>trusts the number"]
-    end
-    subgraph dogwood ["DOGWOOD: the counting happens inside the engine"]
-        direction TB
-        DL["your event log<br/>one record per payment"] -->|"the raw events"| DP["the policy<br/>sums it and compares<br/>trusts the log"]
-    end
-    cedar ~~~ dogwood
-```
+![Two boxes. On the left, your own code holds the ledger, filters it to this
+order and the last sixty minutes, and produces a total of $60. A single arrow
+carries that number across into the policy engine on the right, which verifies
+the window is for the right order and starts sixty minutes before the request,
+but trusts that the total itself is correct.](docs/img/cedar-counts-outside.png)
 
-Neither engine escapes trust; they place it differently. Cedar trusts a number
-you computed, Dogwood trusts the log you kept. What the split costs Cedar — in
-files, and in what can be unit tested — is the measurement.
+![The same two boxes with the counting relocated. On the left, your event log
+holds one record per executed payment. An arrow carries the raw events into the
+policy engine, which now computes the total itself, but trusts that every
+payment reached the log and that each event carries the fields the rule
+names.](docs/img/dogwood-counts-inside.png)
+
+What that split costs Cedar — in files, and in what can be unit tested — is the
+measurement.
 
 ## Setup
 
