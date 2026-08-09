@@ -1,0 +1,791 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agentic temporal policy constraints in Cedar and Dogwood</title>
+<style>
+  :root {
+    color-scheme: light;
+    --paper:      #FFFFFF;
+    --ink:        #1A1A1A;
+    --ink-2:      #4A4A4A;
+    --muted:      #767676;
+    --rule:       #E2E2E2;
+    --green:      #177B57;
+    --green-soft: #EAF3EF;
+    --band:       #F6F6F4;
+    --rust:       #A9501F;
+    --serif: Charter, "Iowan Old Style", Palatino, "Palatino Linotype", Georgia, serif;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--serif);
+    font-size: 17px;
+    line-height: 1.62;
+    margin: 0;
+    padding: 0 24px 96px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page { max-width: 46rem; margin: 0 auto; }
+
+  /* ---- masthead ---- */
+
+  .masthead { padding: 72px 0 0; }
+
+  .eyebrow {
+    font-family: var(--sans);
+    font-size: 11px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 0 20px;
+  }
+
+  /* sized to hold the full title on one line at the page's 46rem column;
+     wraps rather than overflows on narrow viewports */
+  h1 {
+    font-size: 1.72rem;
+    line-height: 1.24;
+    font-weight: 700;
+    letter-spacing: -.019em;
+    margin: 0 0 18px;
+  }
+
+  .summary {
+    border-top: 2px solid var(--green);
+    padding-top: 20px;
+    margin: 26px 0 30px;
+  }
+
+  .summary-label {
+    font-family: var(--sans);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 0 16px;
+  }
+
+  .summary p {
+    font-size: 1.02rem;
+    line-height: 1.58;
+    color: var(--ink-2);
+    margin: 0 0 .95em;
+  }
+
+  .summary p:last-child { margin-bottom: 0; }
+
+  .meta {
+    font-family: var(--sans);
+    font-size: 12.5px;
+    line-height: 1.75;
+    color: var(--muted);
+    border-top: 1px solid var(--rule);
+    padding-top: 14px;
+    margin: 0;
+  }
+
+  /* ---- sections ---- */
+
+  section { margin-top: 84px; }
+
+  .sec-num {
+    font-family: var(--sans);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: .12em;
+    color: var(--green);
+    margin: 0 0 10px;
+  }
+
+  h2 {
+    font-size: 1.5rem;
+    line-height: 1.3;
+    font-weight: 600;
+    letter-spacing: -.008em;
+    margin: 0 0 22px;
+    padding-bottom: 18px;
+    border-bottom: 2px solid var(--green);
+    max-width: 38rem;
+  }
+
+  p { margin: 0 0 1.05em; }
+
+  em { font-style: italic; }
+
+  /* ---- exhibit ---- */
+
+  figure {
+    margin: 44px 0;
+    padding: 26px 26px 20px;
+    background: var(--band);
+    border: 1px solid var(--rule);
+  }
+
+  .ex-label {
+    font-family: var(--sans);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 0 4px;
+  }
+
+  .ex-title {
+    font-family: var(--sans);
+    font-size: 14.5px;
+    font-weight: 600;
+    color: var(--ink);
+    margin: 0 0 22px;
+  }
+
+  .ex-canvas { overflow-x: auto; }
+
+  .ex-canvas svg { display: block; width: 100%; min-width: 620px; height: auto; }
+
+  figcaption {
+    font-family: var(--sans);
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--ink-2);
+    margin-top: 20px;
+    padding-top: 14px;
+    border-top: 1px solid var(--rule);
+  }
+
+  /* ---- svg type ---- */
+
+  .s-lab  { font-family: var(--sans); font-size: 10.5px; font-weight: 600;
+            letter-spacing: .1em; fill: var(--muted); }
+  .s-box  { font-family: var(--sans); font-size: 12.5px; fill: var(--ink); }
+  .s-strong { font-family: var(--sans); font-size: 13px; font-weight: 600; fill: var(--ink); }
+  .s-sub  { font-family: var(--sans); font-size: 11px; fill: var(--muted); }
+  .s-tot  { font-family: var(--sans); font-size: 12px; fill: var(--ink-2); }
+  .s-hit  { font-family: var(--sans); font-size: 13.5px; font-weight: 700; fill: var(--green); }
+  .s-verb { font-family: var(--sans); font-size: 11.5px; fill: var(--muted); }
+  .s-trust{ font-family: var(--sans); font-size: 11.5px; font-weight: 700; fill: var(--ink); }
+  .s-file { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            font-size: 12.5px; font-weight: 600; fill: var(--ink); }
+  .s-gone { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            font-size: 12.5px; font-weight: 600; fill: var(--muted); }
+
+  strong { font-weight: 600; }
+
+  /* secondary evidence, set aside so it does not compete with the argument */
+  .note {
+    background: var(--band);
+    border-left: 3px solid var(--muted);
+    padding: 18px 22px;
+    margin: 30px 0;
+  }
+  .note p {
+    font-family: var(--sans);
+    font-size: 13.5px;
+    line-height: 1.6;
+    color: var(--ink-2);
+    margin: 0;
+  }
+  .note .quote {
+    font-family: var(--serif);
+    font-size: 15.5px;
+    font-style: italic;
+    line-height: 1.5;
+    color: var(--ink);
+    margin: 13px 0 9px;
+  }
+  .note .src { font-size: 12px; color: var(--muted); }
+
+  a {
+    color: var(--ink);
+    text-decoration: underline;
+    text-decoration-color: var(--rule);
+    text-underline-offset: 2px;
+  }
+  a:hover { text-decoration-color: var(--ink); }
+
+  /* ---- code excerpts ---- */
+
+  .code { margin: 30px 0; border: 1px solid var(--rule); }
+
+  /* a file that exists only because the rule is temporal, marked whole so it
+     reads as one rule with the highlighted policy lines */
+  .code.part { border-left: 3px solid var(--green); }
+  .code.part pre { background: var(--green-soft); }
+
+  .code-bar {
+    font-family: var(--sans);
+    font-size: 11.5px;
+    color: var(--muted);
+    background: var(--band);
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .code-bar .fn {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-weight: 600;
+    color: var(--ink);
+  }
+
+  .code pre {
+    margin: 0;
+    padding: 15px 18px;
+    overflow-x: auto;
+    background: var(--paper);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12.5px;
+    line-height: 1.58;
+    color: var(--ink);
+  }
+
+  /* the lines that do the temporal work, marked so they read against the
+     scaffolding that surrounds them */
+  .code pre .t {
+    display: block;
+    margin: 0 -18px;
+    padding: 0 18px;
+    background: var(--green-soft);
+    box-shadow: inset 3px 0 0 var(--green);
+  }
+
+  .legend {
+    font-family: var(--sans);
+    font-size: 12.5px;
+    line-height: 1.55;
+    color: var(--ink-2);
+    margin: -18px 0 30px;
+    padding-left: 13px;
+    border-left: 3px solid var(--green);
+  }
+
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: .87em;
+    background: var(--band);
+    padding: .1em .32em;
+    border: 1px solid var(--rule);
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="masthead">
+    <p class="eyebrow">Agent governance · August 2026</p>
+    <h1>Agentic temporal policy constraints in Cedar and Dogwood</h1>
+
+    <div class="summary">
+      <p class="summary-label">Executive summary</p>
+
+      <p>If you are putting a policy engine in front of an agent's tools, Cedar is the usual
+        choice. In the agentic setting it has one structural gap: a Cedar policy judges one request
+        at a time. An overeager agent can make requests that are individually compliant but that add up to a
+        misbehaviour, so a policy has to remember what an agent has already done in order to police
+        it. That is a temporal constraint.</p>
+
+      <p>Cedar was not built to be stateful, so a temporal constraint is not a first-class citizen
+        in it. In this document we walk you through how you write one anyway, and why that turns
+        out to be painful. That pain is why AWS introduced Dogwood,
+        and we write the same rule there to see what changes. We
+        close with what Dogwood does not fix: it has constraints of its own, and any design using
+        it has to treat the log as a first-class citizen, which
+        also changes how you test.</p>
+
+    </div>
+
+    <p class="meta">
+      9 August 2026 &nbsp;·&nbsp; Assumes familiarity with Cedar policies and conditions.
+      Both implementations were built and run: one rule, two engines, the same test suite.
+      Every measurement quoted is from a run.
+    </p>
+  </header>
+
+  <section>
+    <p class="sec-num">01</p>
+    <h2>Policy design has to account for agentic behaviour, and that means temporal constraints</h2>
+
+    <p>Imagine an agent whose job is to approve customer claims automatically. You're cautious
+      about what it can do unsupervised, so you add a rule: anything over $100 escalates to a
+      human. The claims tool enforces it: any single payment above $100 is denied.</p>
+
+    <p>That feels like a good control, and it is, right up until the agent becomes overeager.
+      Handed a $500 claim it cannot pay in one go, it splits the claim into five payments of $100
+      and pays each one. Every payment is inside the limit. Every payment is approved. The
+      escalation never happens.</p>
+
+    <figure>
+      <p class="ex-label">Exhibit 1</p>
+      <p class="ex-title">Five legal payments, one illegal outcome</p>
+      <div class="ex-canvas">
+        <svg viewBox="0 0 760 330" role="img"
+             aria-label="A $500 claim is split by the agent into five payments of $100. Each is checked against the $100 rule and approved. The running total climbs to $500, crossing the $100 escalation threshold, which never fires because no single payment exceeded it.">
+          <defs>
+            <marker id="ar" viewBox="0 0 8 8" refX="7" refY="4"
+                    markerWidth="7" markerHeight="7" orient="auto">
+              <path d="M0,0 L8,4 L0,8 z" fill="#767676"/>
+            </marker>
+          </defs>
+
+          <!-- column labels -->
+          <text class="s-lab" x="10"  y="26">THE TASK</text>
+          <text class="s-lab" x="186" y="26">AGENT ISSUES</text>
+          <text class="s-lab" x="300" y="26">RULE CHECKS ONE PAYMENT</text>
+          <text class="s-lab" x="530" y="26">TOTAL PAID OUT</text>
+
+          <!-- the claim -->
+          <rect x="10" y="128" width="118" height="60" fill="#EAF3EF" stroke="#177B57"/>
+          <text class="s-strong" x="69" y="152" text-anchor="middle">$500 claim</text>
+          <text class="s-sub"    x="69" y="170" text-anchor="middle">one task</text>
+
+          <!-- fan-out spine -->
+          <path d="M128,158 H156" stroke="#767676" fill="none"/>
+          <path d="M156,64 V252"  stroke="#767676" fill="none"/>
+
+          <!-- row 1 -->
+          <path d="M156,64 H180" stroke="#767676" fill="none" marker-end="url(#ar)"/>
+          <rect x="186" y="50" width="86" height="28" fill="#FFFFFF" stroke="#767676"/>
+          <text class="s-box" x="229" y="68" text-anchor="middle">pay $100</text>
+          <path d="M272,64 H296" stroke="#767676" fill="none" marker-end="url(#ar)"/>
+          <text class="s-box" x="302" y="68">$100 ≤ $100 → approved</text>
+          <rect x="530" y="54" width="40" height="20" fill="#D9D9D4"/>
+          <text class="s-tot" x="578" y="69">$100</text>
+
+          <!-- row 2 -->
+          <path d="M156,111 H180" stroke="#767676" fill="none" marker-end="url(#ar)"/>
+          <rect x="186" y="97" width="86" height="28" fill="#FFFFFF" stroke="#767676"/>
+          <text class="s-box" x="229" y="115" text-anchor="middle">pay $100</text>
+          <path d="M272,111 H296" stroke="#767676" fill="none" marker-end="url(#ar)"/>
+          <text class="s-box" x="302" y="115">$100 ≤ $100 → approved</text>
+          <rect x="530" y="101" width="80" height="20" fill="#D9D9D4"/>
+          <text class="s-tot" x="618" y="116">$200</text>
+
+          <!-- row 3 -->
+          <path d="M156,158 H180" stroke="#767676" fill="none" marker-end="url(#ar)"/>
+          <rect x="186" y="144" width="86" height="28" fill="#FFFFFF" stroke="#767676"/>
+          <text class="s-box" x="229" y="162" text-anchor="middle">pay $100</text>
+          <path d="M272,158 H296" stroke="#767676" fill="none" marker-end="url(#ar)"/>
+          <text class="s-box" x="302" y="162">$100 ≤ $100 → approved</text>
+          <rect x="530" y="148" width="120" height="20" fill="#D9D9D4"/>
+          <text class="s-tot" x="658" y="163">$300</text>
+
+          <!-- row 4 -->
+          <path d="M156,205 H180" stroke="#767676" fill="none" marker-end="url(#ar)"/>
+          <rect x="186" y="191" width="86" height="28" fill="#FFFFFF" stroke="#767676"/>
+          <text class="s-box" x="229" y="209" text-anchor="middle">pay $100</text>
+          <path d="M272,205 H296" stroke="#767676" fill="none" marker-end="url(#ar)"/>
+          <text class="s-box" x="302" y="209">$100 ≤ $100 → approved</text>
+          <rect x="530" y="195" width="160" height="20" fill="#D9D9D4"/>
+          <text class="s-tot" x="698" y="210">$400</text>
+
+          <!-- row 5 -->
+          <path d="M156,252 H180" stroke="#767676" fill="none" marker-end="url(#ar)"/>
+          <rect x="186" y="238" width="86" height="28" fill="#FFFFFF" stroke="#767676"/>
+          <text class="s-box" x="229" y="256" text-anchor="middle">pay $100</text>
+          <path d="M272,252 H296" stroke="#767676" fill="none" marker-end="url(#ar)"/>
+          <text class="s-box" x="302" y="256">$100 ≤ $100 → approved</text>
+          <rect x="530" y="242" width="200" height="20" fill="#177B57"/>
+          <text class="s-hit" x="530" y="286">$500 paid out, no escalation</text>
+
+          <!-- the threshold the total sails past -->
+          <path d="M570,40 V268" stroke="#1A1A1A" stroke-width="1"
+                stroke-dasharray="3 3" fill="none"/>
+          <text class="s-sub" x="576" y="304">$100 escalation threshold</text>
+          <text class="s-sub" x="576" y="46">no single payment crosses it</text>
+        </svg>
+      </div>
+      <figcaption>The rule was never broken. It was satisfied five times. Each check sees one
+        payment, so nothing ever notices the total.</figcaption>
+    </figure>
+
+    <p>Why the agent behaved that way is a separate investigation, and not the one that fixes
+      this. What matters is how you design a policy that an overeager agent cannot get
+      through.</p>
+
+    <p>The policy engine was asked, five times, whether a $100 payment was allowed, and five
+      times it answered correctly. It was never asked whether $500 had already gone out. That is
+      not a question about a payment. It is a question about the payments before it, and a rule
+      that sees one request at a time cannot bound what a sequence of them adds up to. To close
+      that, the control has to change shape: not <em>is this payment allowed</em>, but <em>is this
+      payment allowed given everything already paid</em>.</p>
+
+    <p>That second rule is temporal, and it needs something a policy engine is usually built not
+      to have: memory. Most engines remember nothing: you hand them a request, they judge that
+      request, and nothing carries over.</p>
+
+    <p>Cedar is that kind of engine, and it is what most teams reach for today. The rest of this
+      document is about adding a temporal constraint to it: how you do it, why it is more painful
+      than it looks, and what Dogwood changes by moving the memory inside the engine.</p>
+  </section>
+
+  <section>
+    <p class="sec-num">02</p>
+    <h2>Cedar keeps the engine stateless, so you hold the state yourself</h2>
+
+    <p>Cedar is AWS's open-source authorization language. It has a schema, a validator and a real
+      test story, and the rule from section 1 (no single payment over $100) is a single short policy.
+      That part is genuinely easy, and it is why Cedar is the default answer when someone asks
+      what should sit in front of an agent's tools.</p>
+
+    <p>Then you try to add the rolling-hour rule, and it stops being easy. Not because the syntax
+      is hard. Because you cannot write the rule. You write part of it in the policy and the other
+      part in your application logic, and from then on the rule only holds if both halves
+      agree.</p>
+
+    <p>The reason is one property: a Cedar decision is stateless. It is a pure function of three
+      inputs, the request, the policies and the entity store, and nothing in that tuple is history.
+      It cannot look anything up, and it has no <code>count</code> or <code>sum</code>.</p>
+
+    <aside class="note">
+      <p>This is deliberate. Statelessness is what lets a policy set be checked by an SMT solver
+        without running it, and Cedar lists that analysis as a design goal. The datetime extension
+        shows how far that goes. It was accepted and shipped, and even so a
+        <code>currentTime()</code> function was turned down inside it, on exactly this ground.</p>
+      <p class="quote">"However, <code>currentTime()</code> is stateful, i.e. not pure, and cannot
+        be modeled in SMT."</p>
+      <p class="src"><a
+        href="https://github.com/cedar-policy/rfcs/blob/main/text/0080-datetime-extension.md">Cedar
+        RFC 0080, <code>datetime</code> extension</a>. Accepted 11 September 2024, released
+        21 January 2025 in <code>cedar-policy</code> v4.3.0.</p>
+    </aside>
+
+    <figure>
+      <p class="ex-label">Exhibit 2</p>
+      <p class="ex-title">In Cedar, the counting happens outside the engine</p>
+      <div class="ex-canvas">
+        <svg viewBox="0 0 760 300" role="img"
+             aria-label="Two boxes. On the left, your own code holds the ledger, filters it to this order and the last sixty minutes, and produces a total of $60. A single arrow carries that number across into the policy engine on the right. Inside the engine, the policy verifies that the window is for the right order and starts sixty minutes before the request, but trusts that the total itself is correct.">
+          <defs>
+            <marker id="ar2" viewBox="0 0 8 8" refX="7" refY="4"
+                    markerWidth="7" markerHeight="7" orient="auto">
+              <path d="M0,0 L8,4 L0,8 z" fill="#177B57"/>
+            </marker>
+          </defs>
+
+          <!-- your code: solid border, because you own and can inspect it -->
+          <text class="s-lab" x="10" y="42">YOUR CODE</text>
+          <rect x="10" y="58" width="250" height="180" fill="#FFFFFF" stroke="#767676"/>
+          <text class="s-file" x="30" y="90">ledger.py</text>
+          <text class="s-box"  x="30" y="122">every payment ever made</text>
+          <text class="s-box"  x="30" y="150">filter → ORD-1, last 60 min</text>
+          <text class="s-box"  x="30" y="178">sum → $60</text>
+          <text class="s-sub"  x="30" y="214">code you own and maintain</text>
+
+          <!-- the only thing that crosses -->
+          <path d="M262,148 H396" stroke="#177B57" stroke-width="1.5"
+                fill="none" marker-end="url(#ar2)"/>
+          <text class="s-hit" x="329" y="136" text-anchor="middle">$60 already paid</text>
+          <text class="s-sub" x="329" y="170" text-anchor="middle">a number,</text>
+          <text class="s-sub" x="329" y="185" text-anchor="middle">not the payments</text>
+
+          <!-- policy engine: dashed, because its inputs are the whole of its world -->
+          <text class="s-lab" x="404" y="42">POLICY ENGINE</text>
+          <rect x="404" y="58" width="346" height="180" fill="#FFFFFF"
+                stroke="#767676" stroke-dasharray="4 3"/>
+          <text class="s-file" x="424" y="90">policy.cedar</text>
+          <text class="s-verb"  x="424" y="122">verifies</text>
+          <text class="s-box"   x="492" y="122">the window is for ORD-1</text>
+          <text class="s-verb"  x="424" y="150">verifies</text>
+          <text class="s-box"   x="492" y="150">it starts 60 min before this request</text>
+          <text class="s-trust" x="424" y="178">trusts</text>
+          <text class="s-box"   x="492" y="178">that $60 is the right total</text>
+          <text class="s-sub"   x="424" y="214">schema · entities</text>
+        </svg>
+      </div>
+      <figcaption>The engine can check where the number came from. It cannot check the number.
+        Everything on the left of that arrow is inside the trust boundary, and in Cedar that is
+        your code.</figcaption>
+    </figure>
+
+    <p>So a temporal constraint in Cedar is possible. It just stops living in one place. You keep
+      the engine
+      stateless and make the <em>input</em> stateful: your code queries your ledger, sums what was
+      paid on this order in the last hour, and hands Cedar that number as a fact on the request.
+      The policy compares it to the cap.</p>
+
+    <p>That split in full. First the rule as the engine sees it, then the code that feeds it:</p>
+
+    <div class="code">
+      <p class="code-bar"><span class="fn">cedar/v2/policy.cedar</span> · the rolling-hour rule,
+        comments removed</p>
+<pre>@id("rolling-hour-cap")
+forbid (
+  principal,
+  action == Action::"pay",
+  resource
+)
+unless {
+  context has at &amp;&amp;
+  context has amount_cents &amp;&amp;
+  context has window &amp;&amp;
+  context.window has order &amp;&amp;
+  context.window has start &amp;&amp;
+  context.window has total_cents &amp;&amp;
+<span class="t">  context.window.order == resource &amp;&amp;</span>
+<span class="t">  context.window.start == context.at.offset(duration("-60m")) &amp;&amp;</span>
+  context.amount_cents &lt;= 10000 &amp;&amp;
+  context.window.total_cents &gt;= 0 &amp;&amp;
+  context.window.total_cents &lt;= 10000 &amp;&amp;
+<span class="t">  context.window.total_cents + context.amount_cents &lt;= 10000</span>
+};</pre>
+    </div>
+
+    <div class="code part">
+      <p class="code-bar"><span class="fn">cedar/v2/ledger.py</span> · the window and the sum,
+        excerpted</p>
+<pre>WINDOW = timedelta(minutes=60)
+
+def window_total(self, order_id: str, at: datetime) -&gt; WindowTotal:
+    start = at - WINDOW
+    total = sum(p.amount_cents for p in self._payments
+                if p.order_id == order_id and p.at &gt;= start)
+    return WindowTotal(order_id=order_id, start=start, total_cents=total)</pre>
+    </div>
+
+    <p class="legend"><strong>Green is the rolling-hour rule.</strong> Three lines of it are in
+      the policy: scope the total to this order, define the window, test the total against the
+      cap. The rest is <code>ledger.py</code>, green in full because none of it existed before.
+      Both blocks are one rule, and the payment is only judged correctly if both are right.</p>
+
+    <p>You now own and maintain that module. And the sixty minutes appears in
+      both files, as <code>timedelta(minutes=60)</code> where the window is built and
+      <code>duration("-60m")</code> where it is checked. They have to agree about what an hour is,
+      and nothing but you enforces that. And that cost is paid per rule: the next temporal
+      constraint splits the same way, with its own aggregation and its own pair of definitions to
+      hold in step.</p>
+
+  </section>
+
+  <section>
+    <p class="sec-num">03</p>
+    <h2>Dogwood moves the state into the engine, so the whole rule fits in one policy</h2>
+
+    <p>In section 2 the rule ended up in two places: the window and the sum in
+      <code>ledger.py</code> and the threshold in <code>policy.cedar</code>. Dogwood puts it in
+      one. It is a temporal superset of Cedar that AWS
+      open-sourced on 6 August 2026: the same language, plus a kind of clause that can read an
+      event log. That makes the rolling-hour cap something the policy can state by itself.</p>
+
+    <p>Concretely, it is one clause appended to the per-payment rule you already have. No new
+      module. The sixty minutes is written once, here, because nothing else needs to know it.</p>
+
+    <div class="code">
+      <p class="code-bar"><span class="fn">dogwood/v2/pay.dw</span> · the clause appended to the
+        existing rule, comments removed</p>
+<pre>when temporal {
+    exists (total: Long). (
+        sum_within(a, 1h, Support::Action::"Pay"::request{
+            callerResource: resource,
+            input.amount_cents: a
+        }) == total
+        &amp;&amp; total &lt;= 10000
+    )
+};</pre>
+    </div>
+
+    <p>Set that against Cedar, where the same rule needed a policy and a module beside it. The
+      difference is not brevity. There is no second half to keep in sync with.</p>
+
+    <figure>
+      <p class="ex-label">Exhibit 3</p>
+      <p class="ex-title">In Dogwood, the counting happens inside the engine</p>
+      <div class="ex-canvas">
+        <svg viewBox="0 0 760 300" role="img"
+             aria-label="The same two boxes as Exhibit 2, with the counting relocated. On the left, your event log holds one record per executed payment. An arrow carries the raw events into the policy engine on the right. Inside the engine, the policy now computes the total itself, but trusts that every payment reached the log and that each event carries the fields the rule names.">
+          <defs>
+            <marker id="ar3" viewBox="0 0 8 8" refX="7" refY="4"
+                    markerWidth="7" markerHeight="7" orient="auto">
+              <path d="M0,0 L8,4 L0,8 z" fill="#177B57"/>
+            </marker>
+          </defs>
+
+          <text class="s-lab" x="10" y="42">YOUR EVENT LOG</text>
+          <rect x="10" y="58" width="250" height="180" fill="#FFFFFF" stroke="#767676"/>
+          <text class="s-strong" x="30" y="90">payment events</text>
+          <text class="s-box"    x="30" y="122">one record per payment</text>
+          <text class="s-box"    x="30" y="150">written by the harness</text>
+          <text class="s-box"    x="30" y="178">never read back by you</text>
+          <text class="s-sub"    x="30" y="214">the rule holds only if it is complete</text>
+
+          <path d="M262,148 H396" stroke="#177B57" stroke-width="1.5"
+                fill="none" marker-end="url(#ar3)"/>
+          <text class="s-hit" x="329" y="136" text-anchor="middle">the raw events</text>
+          <text class="s-sub" x="329" y="170" text-anchor="middle">not a number,</text>
+          <text class="s-sub" x="329" y="185" text-anchor="middle">the events themselves</text>
+
+          <text class="s-lab" x="404" y="42">POLICY ENGINE</text>
+          <rect x="404" y="58" width="346" height="180" fill="#FFFFFF"
+                stroke="#767676" stroke-dasharray="4 3"/>
+          <text class="s-file" x="424" y="90">pay.dw</text>
+          <text class="s-verb"  x="424" y="122">computes</text>
+          <text class="s-box"   x="492" y="122">the total from the events it is given</text>
+          <text class="s-trust" x="424" y="150">trusts</text>
+          <text class="s-box"   x="492" y="150">every payment reached the log</text>
+          <text class="s-trust" x="424" y="178">trusts</text>
+          <text class="s-box"   x="492" y="178">each event carries the fields it names</text>
+          <text class="s-sub"   x="424" y="214">schema · entities</text>
+        </svg>
+      </div>
+      <figcaption>The counting moved inside the boundary, and one line of trust became two.
+        Cedar trusts one number. Dogwood trusts the entire log it is
+        given.</figcaption>
+    </figure>
+
+  </section>
+
+  <section>
+    <p class="sec-num">04</p>
+    <h2>The policy now reads your log, so a gap in it silently removes the rule</h2>
+
+    <p>Section 2 said a Cedar decision is a pure function of the request, the policies and the
+      entity store. A <code>when temporal</code> clause breaks that: it depends on a log, an input
+      the engine reads, does not own and cannot check. So designing with Dogwood means treating
+      the completeness of that log as a first-class concern, on the same footing as the policy
+      itself. When the log is wrong, the rule fails silently.</p>
+
+    <p>The engine has nothing but the log to evaluate against. That is the side effect of making
+      it stateful: a payment that never reaches the log did not happen, as far as the rule is
+      concerned. Take three payments on one order inside the hour, against the $100 cap: $50 at
+      12:00, $30 at 12:10, and $40 arriving at 12:20 to be decided.</p>
+
+    <figure>
+      <p class="ex-label">Exhibit 4</p>
+      <p class="ex-title">One record that never arrived, and the cap stops applying</p>
+      <div class="ex-canvas">
+        <svg viewBox="0 0 760 310" role="img"
+             aria-label="Two panels showing the same decision against two logs. On the left the log is complete: fifty dollars at 12:00, thirty at 12:10, and the forty-dollar request at 12:20 sum to one hundred and twenty, which exceeds the hundred-dollar cap, so the payment is denied. On the right the thirty-dollar record never reached the log: the remaining rows sum to ninety, which is under the cap, so the payment is allowed and a hundred and twenty dollars is paid out.">
+          <!-- panel A: the log is complete -->
+          <text class="s-lab" x="10" y="42">COMPLETE LOG</text>
+          <rect x="10" y="58" width="355" height="228" fill="#FFFFFF" stroke="#767676"/>
+          <text class="s-file" x="30" y="90">12:00   ORD-1   $50</text>
+          <text class="s-file" x="30" y="114">12:10   ORD-1   $30</text>
+          <text class="s-file" x="30" y="138">12:20   ORD-1   $40</text>
+          <text class="s-sub"  x="196" y="138">the request</text>
+          <path d="M30,158 H345" stroke="#E2E2E2" fill="none"/>
+          <text class="s-box" x="30" y="184">sum_within(1h) = $120</text>
+          <text class="s-box" x="30" y="208">$120 &gt; $100</text>
+          <rect x="11" y="230" width="353" height="48" fill="#F6F6F4"/>
+          <text class="s-strong" x="30" y="252">DENY</text>
+          <text class="s-sub"    x="30" y="270">the cap binds, as written</text>
+
+          <!-- panel B: one record never got there -->
+          <text class="s-lab" x="395" y="42">ONE RECORD NEVER ARRIVED</text>
+          <rect x="395" y="58" width="355" height="228" fill="#FFFFFF" stroke="#767676"/>
+          <text class="s-file" x="415" y="90">12:00   ORD-1   $50</text>
+          <text class="s-gone" x="415" y="114">12:10   ORD-1   $30</text>
+          <path d="M415,110 H553" stroke="#767676" fill="none"/>
+          <text class="s-sub"  x="565" y="114">never written</text>
+          <text class="s-file" x="415" y="138">12:20   ORD-1   $40</text>
+          <text class="s-sub"  x="581" y="138">the request</text>
+          <path d="M415,158 H730" stroke="#E2E2E2" fill="none"/>
+          <text class="s-box" x="415" y="184">sum_within(1h) = $90</text>
+          <text class="s-box" x="415" y="208">$90 ≤ $100</text>
+          <rect x="396" y="230" width="353" height="48" fill="#EAF3EF"/>
+          <text class="s-strong" x="415" y="252">ALLOW</text>
+          <text class="s-sub"    x="415" y="270">$120 paid under a $100 cap, exit 0</text>
+        </svg>
+      </div>
+      <figcaption>Both runs measured. The rule did not fail. It was evaluated correctly against
+        the evidence it was given, and the evidence was short by one row.</figcaption>
+    </figure>
+
+    <p>Nothing about that looks like a failure. A sum over fewer rows is just a smaller number, and the
+      run exits 0.</p>
+
+    <p>Most logging pipelines are not built to carry a control. They sample, they buffer, and they
+      drop under load, because for dashboards that is an acceptable trade. It stops being
+      acceptable once a policy is reading them.</p>
+
+
+  </section>
+
+  <section>
+    <p class="sec-num">05</p>
+    <h2>A rule that lives in one file can be unit tested; a rule split across two cannot</h2>
+
+    <p>This section is about how to test a rule once it has a temporal constraint in it, and the
+      difference between the two engines comes straight from section 3. Adding the rule gives you
+      two components instead of one, in both. In Cedar they are the code that aggregates and the
+      policy that compares; in Dogwood, the log and the policy that reads it. What differs is
+      whether the rule spans both of them.</p>
+
+    <figure>
+      <p class="ex-label">Exhibit 5</p>
+      <p class="ex-title">Green is the rule. In Cedar it spans both components</p>
+      <div class="ex-canvas">
+        <svg viewBox="0 0 760 250" role="img"
+             aria-label="Three columns, with green marking where the rolling-hour rule lives. Without a temporal rule the whole rule is in the policy, one component. In Cedar the rule spans both components: ledger.py, which computes the total, and policy.cedar, which compares it to the cap. In Dogwood the rule is in pay.dw alone, which holds the window, the sum and the cap; the event writer beside it is not the rule but the contract the rule depends on.">
+          <!-- without a temporal rule -->
+          <text class="s-lab" x="10" y="40">WITHOUT A TEMPORAL RULE</text>
+          <rect x="10" y="58" width="210" height="52" fill="#EAF3EF" stroke="#177B57"/>
+          <text class="s-strong" x="115" y="82"  text-anchor="middle">the policy</text>
+          <text class="s-sub"    x="115" y="100" text-anchor="middle">the whole rule</text>
+          <text class="s-sub"    x="115" y="214" text-anchor="middle">one component to test</text>
+
+          <!-- cedar: the rule spans both -->
+          <text class="s-lab" x="270" y="40">CEDAR</text>
+          <rect x="270" y="58" width="210" height="52" fill="#EAF3EF" stroke="#177B57"/>
+          <text class="s-file" x="375" y="82"  text-anchor="middle">ledger.py</text>
+          <text class="s-sub"  x="375" y="100" text-anchor="middle">computes the total</text>
+          <rect x="270" y="126" width="210" height="52" fill="#EAF3EF" stroke="#177B57"/>
+          <text class="s-file" x="375" y="150" text-anchor="middle">policy.cedar</text>
+          <text class="s-sub"  x="375" y="168" text-anchor="middle">compares it to the cap</text>
+          <text class="s-strong" x="375" y="214" text-anchor="middle">the rule spans both</text>
+
+          <!-- dogwood: the rule is in one, the other is a contract -->
+          <text class="s-lab" x="530" y="40">DOGWOOD</text>
+          <rect x="530" y="58" width="210" height="52" fill="#FFFFFF" stroke="#767676"/>
+          <text class="s-strong" x="635" y="82"  text-anchor="middle">the event writer</text>
+          <text class="s-sub"    x="635" y="100" text-anchor="middle">the log's shape</text>
+          <rect x="530" y="126" width="210" height="52" fill="#EAF3EF" stroke="#177B57"/>
+          <text class="s-file" x="635" y="150" text-anchor="middle">pay.dw</text>
+          <text class="s-sub"  x="635" y="168" text-anchor="middle">window, sum and cap</text>
+          <text class="s-strong" x="635" y="214" text-anchor="middle">the rule is in one</text>
+        </svg>
+      </div>
+      <figcaption>Both engines gained a second component. Only in Cedar did the rule move into
+        both of them. Dogwood's second component is a contract the rule depends on, not part of
+        the rule.</figcaption>
+    </figure>
+
+    <p>In Cedar the two halves are coupled by construction. Sixty minutes is written in both
+      files, so changing the window means editing both. The policy checks that the window it was
+      handed <em>claims</em> to
+      start sixty minutes before the request; it cannot check what was actually summed. A ledger
+      that sums thirty minutes and reports sixty passes every policy-level assertion, and so does
+      one that always returns zero. You cannot write a clean unit test for this rule. You need a
+      test that runs the two components end to end.</p>
+
+    <p>In Dogwood the rule is in one file. The window, the summation and the cap are all in the
+      policy, so a test can hand it a log written by hand and check the answer, with none of your
+      own code running.</p>
+
+  </section>
+
+  <section>
+    <p class="sec-num">06</p>
+    <h2>Dogwood simplifies this, but only if logging is first class</h2>
+
+    <p>To summarise what we have covered in this document: your agent has a tendency to misbehave.
+      In our example, not by attacking anything but by breaking its task into steps that each
+      satisfy the policy and together sidestep it. What you want is to gate it
+      with a temporal constraint, a rule about what has already happened. Cedar was not built for that. Adding one
+      brings complexity, because your change lands in two places: the policy, and the code that does
+      the counting. You now have to keep both agreeing about things as basic as how long an hour
+      is. Dogwood simplifies that, and on this evidence we would reach for it. The whole rule
+      goes back into one place you can test on its own. But if you build on it, treat your logging
+      as a first-class citizen. A record that never arrives will remove the rule with no error
+      and a clean exit, and you will not hear about it.</p>
+  </section>
+
+</div>
+</body>
+</html>
