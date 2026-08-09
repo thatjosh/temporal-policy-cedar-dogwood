@@ -1,7 +1,7 @@
 """Shared fixtures.
 
 There is one shared concern: finding the Dogwood engine. Cedar arrives through
-the lockfile like any other library, so it needs no fixture at all — that
+the lockfile like any other library, so it needs no fixture at all. That
 asymmetry is the point, and it is why this file only mentions one of the two
 engines.
 """
@@ -34,8 +34,8 @@ def _candidates() -> list[tuple[str, Path | None]]:
     An explicit override wins so a developer with several builds can state which
     one the suite measured, instead of finding out afterwards. Paths are
     resolved, because a relative override stops meaning the same thing the
-    moment a test changes directory — and this suite writes trace files in
-    temporary directories.
+    moment a test changes directory, which the engine tests will do once they
+    write trace files into temporary directories.
     """
     override = os.environ.get("DOGWOOD_BIN")
     on_path = shutil.which("dogwood")
@@ -51,7 +51,7 @@ def _usable(path: Path | None) -> bool:
 
     A stale override, or a copy that lost its executable bit, otherwise survives
     until the first ``subprocess`` call and surfaces as ``Permission denied``
-    from somewhere deep in a test — which says nothing about how to fix it.
+    from somewhere deep in a test, which says nothing about how to fix it.
     """
     return path is not None and path.is_file() and os.access(path, os.X_OK)
 
@@ -70,7 +70,7 @@ Looked in, in order:
 
 {tried}
 
-Build it — this fetches the pinned revision into .tools/ and installs nothing
+Build it. This fetches the pinned revision into .tools/ and installs nothing
 system-wide:
 
     make dogwood
@@ -103,7 +103,7 @@ def dogwood_binary() -> Path:
     the next candidate. Falling through would answer a question nobody asked:
     someone who set the variable is telling us which engine to measure, and
     quietly measuring a different one is the precise failure this fixture is
-    here to prevent — the suite would go green against a build its author did
+    here to prevent. The suite would go green against a build its author did
     not choose and does not know about.
     """
     override, built, on_path = _candidates()

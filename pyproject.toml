@@ -8,7 +8,7 @@ license = "MIT"
 authors = [{ name = "Joshua Ang" }]
 
 # Cedar is a library, so it is a real dependency. Dogwood ships no Python
-# binding, so it cannot appear here at all — it is an external binary the test
+# binding, so it cannot appear here at all. It is an external binary the test
 # suite locates at run time (see tests/conftest.py). That asymmetry is the first
 # finding of this repo, visible in the dependency list before a line of code.
 dependencies = ["cedarpy>=4.8,<5"]
@@ -49,18 +49,18 @@ select = [
     "B",   # bugbear
     "A",   # shadowed builtins
     "C4",  # comprehensions
-    "DTZ", # naive datetimes — load-bearing here: a window that depends on the
+    "DTZ", # naive datetimes, load-bearing here: a window that depends on the
            # harness's local timezone is a window that means nothing
     "EM",  # exception messages
     "PT",  # pytest style
     "PTH", # pathlib
     "RET",
     "RUF",
-    "S",   # bandit — flags the subprocess calls; each is silenced individually
-           # with a rationale, so the Dogwood subprocess boundary is annotated
-           # rather than hidden
+    "S",   # bandit, flags subprocess use; every such call is silenced one at a
+           # time with a written reason, so the Dogwood subprocess boundary ends
+           # up annotated rather than hidden
     "SIM",
-    "SLF", # private member access — tests must use the public surface
+    "SLF", # private member access; tests must use the public surface
     "TID",
     "TRY",
 ]
@@ -92,11 +92,12 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
-# `--import-mode=importlib` because the suite has parallel `tests/cedar/` and
-# `tests/dogwood/` trees holding same-named modules. pytest's default `prepend`
-# mode imports by munged basename and aborts collection on the collision, and it
-# gets there by inserting test directories into `sys.path` — the implicit form
-# of exactly the defect this rewrite set out to remove.
+# `--import-mode=importlib` because the suite will hold parallel `tests/cedar/`
+# and `tests/dogwood/` trees containing same-named modules. pytest's default
+# `prepend` mode imports by munged basename and aborts collection outright on
+# that collision, and it gets there by inserting test directories into
+# `sys.path`, the implicit form of exactly the defect this rewrite set out to
+# remove. Set now so the layout does not have to fight it later.
 addopts = "--strict-markers --strict-config --import-mode=importlib"
 
 # The marker selects; it does not skip. A plain `pytest` run still fails loudly
@@ -104,6 +105,6 @@ addopts = "--strict-markers --strict-config --import-mode=importlib"
 # asked the engine anything is worse than a red build. The marker exists so CI
 # can run the Cedar half on a runner with no Rust toolchain.
 #
-# Applied automatically from the fixture — see tests/conftest.py — so it can
+# Applied automatically from the fixture (see tests/conftest.py) so it can
 # never disagree with what a test actually uses.
 markers = ["dogwood: needs the Dogwood engine (applied automatically)"]

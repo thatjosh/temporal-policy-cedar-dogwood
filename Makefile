@@ -1,14 +1,15 @@
 # A task menu, not a build system.
 #
-# Most targets here are `.PHONY` — names for commands you would otherwise type
+# Most targets here are `.PHONY`, names for commands you would otherwise type
 # by hand. It is a build tool used as a command menu, which is worth saying out
-# loud rather than implying. The exception is the Dogwood binary, which is a
-# real file target: built once, then left alone.
+# loud rather than implying. The exception is the Dogwood engine, which hangs
+# off a genuine file target: built once, then left alone until the pin moves.
 #
 # `make check` is the reason this file exists: one command that a contributor
 # and CI both run, so nobody verifies three things out of four and calls it
-# green. The remaining targets are its parts, exposed so CI can run the Cedar
-# half on a runner with no Rust toolchain.
+# green. `lint`, `types` and `test` are its parts, split out so CI can run the
+# Cedar half on a runner with no Rust toolchain. The rest build the engine or
+# clean up after it.
 #
 # Not a `justfile`: better ergonomics, but it would add a second "install this
 # first" to a repo that already has one.
@@ -36,14 +37,14 @@ DOGWOOD_REPO ?= https://github.com/dogwood-policy/dogwood
 DOGWOOD      := .tools/bin/dogwood
 
 # rustup installs to ~/.cargo/bin but puts it on PATH only via a line in a shell
-# profile, which a non-interactive shell — make, an IDE task, a CI step — often
+# profile, which a non-interactive shell (make, an IDE task, a CI step) often
 # never reads. Looking there before concluding Rust is absent is the difference
 # between "install Rust" and "your Rust is fine, your PATH is not".
 CARGO := $(shell command -v cargo 2>/dev/null || echo $(HOME)/.cargo/bin/cargo)
 
 # The stamp carries the revision in its name, so bumping DOGWOOD_REV asks for a
 # file that does not exist yet and the engine is rebuilt. Keying on the binary
-# alone would make a pin bump a silent no-op locally — CI would rebuild, having
+# alone would make a pin bump a silent no-op locally. CI would rebuild, having
 # a revision-sensitive cache key, and only your machine would keep testing the
 # old engine.
 STAMP := .tools/.built-$(DOGWOOD_REV)
@@ -92,7 +93,7 @@ types:
 	$(UV) run mypy
 
 # The whole suite. Needs the engine, and fails loudly without it rather than
-# skipping — see tests/conftest.py for why.
+# skipping. See tests/conftest.py for why.
 #
 # Deliberately not declared to depend on the engine: a `make test` that quietly
 # spends a minute compiling Rust is a surprise, and it would compile even for

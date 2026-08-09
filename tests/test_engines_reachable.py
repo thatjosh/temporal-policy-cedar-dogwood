@@ -1,9 +1,9 @@
 """Both engines answer, and the Dogwood one is the build we think it is.
 
-These sit under everything else in the suite. Every later test asks an engine a
-question about a payment and believes the answer, which is only worth doing if
-the engine is reachable and is the version the results were recorded against.
-When one of these fails, no other failure in the suite means anything.
+These sit under everything else in the suite. Every other test asks an engine a
+question and believes the answer, which is only worth doing if the engine is
+reachable and is the version the results were recorded against. When one of
+these two fails, no other failure in the suite means anything.
 """
 
 from __future__ import annotations
@@ -42,7 +42,7 @@ def test_dogwood_reports_the_pinned_version(dogwood_binary: Path) -> None:
     compiled by the repo, and a build that silently became a different version
     would invalidate every measurement recorded against it.
     """
-    done = subprocess.run(  # noqa: S603 — the path comes from the fixture, not from input
+    done = subprocess.run(  # noqa: S603 (path comes from the fixture, not from input)
         [str(dogwood_binary), "--version"],
         capture_output=True,
         text=True,

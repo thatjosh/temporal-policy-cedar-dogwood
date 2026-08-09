@@ -1,7 +1,7 @@
 name: ci
 
 # `push` is filtered to the default branch because a branch with an open pull
-# request fires both events, and this workflow compiles a Rust engine — running
+# request fires both events, and this workflow compiles a Rust engine, so running
 # it twice per commit for identical content is minutes of nothing.
 on:
   push:
@@ -57,7 +57,7 @@ jobs:
       - id: pin
         run: echo "rev=$(make -s print-dogwood-rev)" >> "$GITHUB_OUTPUT"
 
-      # Keyed on the revision itself, so a new pin misses and rebuilds — exactly
+      # Keyed on the revision itself, so a new pin misses and rebuilds, exactly
       # when a rebuild is wanted, and never otherwise. The registry and target
       # directory are cached too: without them every miss is a cold compile of
       # the whole dependency tree, not just of Dogwood.
