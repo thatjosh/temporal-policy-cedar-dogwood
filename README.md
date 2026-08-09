@@ -9,8 +9,8 @@ Cedar that AWS open-sourced in August 2026.
 One rule, implemented twice, tested by the same cases, so the difference between
 the two is the measurement.
 
-> **Under construction.** The workspace is in place and both engines are wired
-> up; the two implementations land next.
+> **Under construction.** The Cedar v1 implementation and the shared case table
+> have landed. Dogwood v1 is next, then the temporal rule in both.
 
 ## The problem
 
@@ -55,7 +55,7 @@ and most policy engines remember nothing at all. That is deliberate: an engine
 with no memory is easy to test, and gives the same answer every time you ask it
 the same question.
 
-## What this repo demonstrates
+## What this repo sets out to show
 
 Dogwood states v2 in the policy file, because its policies read an event log.
 Cedar cannot. A Cedar decision is a pure function of the request, the policies
@@ -110,6 +110,7 @@ first thing this experiment turns up, and you meet it before reading any code.
 | `make test-cedar` | only the half that needs no engine |
 | `make lint` / `make types` / `make fmt` | `ruff` · `mypy --strict` · apply fixes |
 | `make dogwood` / `make clean` | build the pinned engine · drop it, keep the build cache |
+| `make distclean` | remove `.tools/` entirely, including the source clone |
 
 Dogwood tests **fail loudly** when the engine is missing rather than skipping. A
 suite that reports success having never asked the engine anything is worse than

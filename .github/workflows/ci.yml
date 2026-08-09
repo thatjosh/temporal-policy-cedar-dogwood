@@ -32,10 +32,9 @@ jobs:
       - run: make types
       - run: make test-cedar
 
-  # Dogwood ships no Python binding and publishes no release binaries, so the
-  # only way to verify its half is to compile the engine. This job runs the very
-  # same `make dogwood` a contributor runs, so the pinned revision has one home
-  # and CI cannot drift from the documented setup.
+  # Verifying the Dogwood half means compiling the engine; see the README. This
+  # job runs the very same `make dogwood` a contributor runs, so CI cannot drift
+  # from the documented setup.
   dogwood:
     runs-on: ubuntu-latest
     timeout-minutes: 20

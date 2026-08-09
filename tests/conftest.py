@@ -20,7 +20,6 @@ import pytest
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _BUILT_BY_MAKE = _REPO_ROOT / ".tools" / "bin" / "dogwood"
 
-_FIXTURE = "dogwood_binary"
 _MARKER = "dogwood"
 
 
@@ -31,16 +30,16 @@ def _candidates() -> list[tuple[str, Path | None]]:
     it looked at. The advice "set DOGWOOD_BIN" is useless to the one person most
     likely to hit it: someone whose DOGWOOD_BIN is already set, and wrong.
 
-    An explicit override wins so a developer with several builds can state which
-    one the suite measured, instead of finding out afterwards. Paths are
-    resolved, because a relative override stops meaning the same thing the
-    moment a test changes directory, which the engine tests will do once they
-    write trace files into temporary directories.
+    Paths are resolved, because a relative override stops meaning the same thing
+    the moment a test changes directory.
     """
+    # `is not None`, not truthiness: DOGWOOD_BIN="" is someone pointing at a
+    # build, badly. Treating it as unset would resume the search and measure a
+    # different engine, which is the failure this whole function exists to stop.
     override = os.environ.get("DOGWOOD_BIN")
     on_path = shutil.which("dogwood")
     return [
-        ("DOGWOOD_BIN", Path(override).resolve() if override else None),
+        ("DOGWOOD_BIN", Path(override).resolve() if override is not None else None),
         ("built by `make dogwood`", _BUILT_BY_MAKE),
         ("on PATH", Path(on_path).resolve() if on_path else None),
     ]
@@ -58,7 +57,8 @@ def _usable(path: Path | None) -> bool:
 
 def _explain_missing() -> str:
     tried = "\n".join(
-        f"  {source:24} {path if path else '(not set)'}" for source, path in _candidates()
+        f"  {source:24} {path if path is not None else '(not set)'}"
+        for source, path in _candidates()
     )
     return f"""\
 The Dogwood engine was not found, so its half of this suite cannot run.
@@ -88,10 +88,11 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
     a forgotten one is not a cosmetic slip: the test gets collected on a runner
     that has no engine and never can have one, and the job fails with an install
     message it cannot act on. Deriving the marker from the fixture makes the two
-    incapable of disagreeing.
+    incapable of disagreeing. The fixture's own name is used rather than a copy
+    of it, so renaming the fixture cannot leave the marker pointing at nothing.
     """
     for item in items:
-        if isinstance(item, pytest.Function) and _FIXTURE in item.fixturenames:
+        if isinstance(item, pytest.Function) and dogwood_binary.__name__ in item.fixturenames:
             item.add_marker(_MARKER)
 
 
@@ -106,14 +107,14 @@ def dogwood_binary() -> Path:
     here to prevent. The suite would go green against a build its author did
     not choose and does not know about.
     """
-    override, built, on_path = _candidates()
+    (_, override), *fallbacks = _candidates()
 
-    if override[1] is not None:
-        if not _usable(override[1]):
+    if override is not None:
+        if not _usable(override):
             pytest.fail(_explain_missing(), pytrace=False)
-        return override[1]
+        return override
 
-    for _, path in (built, on_path):
+    for _, path in fallbacks:
         if _usable(path):
             assert path is not None  # narrowed by _usable
             return path

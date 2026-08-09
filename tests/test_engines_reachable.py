@@ -49,4 +49,7 @@ def test_dogwood_reports_the_pinned_version(dogwood_binary: Path) -> None:
         check=True,
     )
 
-    assert EXPECTED_DOGWOOD_VERSION in done.stdout, done.stdout
+    # Split rather than substring: "1.0.0" is in "dogwood 11.0.0" and in
+    # "dogwood 1.0.0-rc1", so the check this test is named for would pass for a
+    # major version bump and for a pre-release.
+    assert done.stdout.split() == ["dogwood", EXPECTED_DOGWOOD_VERSION], done.stdout

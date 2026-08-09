@@ -11,30 +11,30 @@
 # Cedar half on a runner with no Rust toolchain. The rest build the engine or
 # clean up after it.
 #
-# Not a `justfile`: better ergonomics, but it would add a second "install this
-# first" to a repo that already has one.
-# Not `[tool.poe.tasks]`: fewer files, but it would add a dependency whose only
-# job is aliasing four commands.
-# There is no `sync` target, because `uv sync` is already one word.
+# A `justfile` or `[tool.poe.tasks]` would each read better and each cost more,
+# one an extra install and the other an extra dependency. See the README.
 
 UV ?= uv
+
+# Python invalidates a .pyc by timestamp plus size, and this repo holds tables
+# where swapping two strings changes neither. A stale cache then hides a real
+# edit from a test run, which has already produced one wrong conclusion here.
+export PYTHONDONTWRITEBYTECODE = 1
 
 # --------------------------------------------------------------------------
 # The Dogwood engine
 #
-# Dogwood ships no Python binding and publishes no release binaries, so the
-# engine has to be compiled. Rather than making that the reader's problem in
-# prose, the repo does it: `make dogwood` fetches the pinned revision and
-# builds it into .tools/, which is gitignored and which the test suite looks in
-# by default. No PATH editing, nothing installed system-wide.
+# Dogwood publishes no release binaries, so the engine has to be compiled. The
+# repo does it rather than asking the reader to: see the README on why only one
+# of the two engines needs this.
 #
-# The revision is pinned here and CI uses this same target, so the engine you
-# build locally is the engine CI measures.
+# CI runs this same target, so the engine you build locally is the one CI
+# measures.
 # --------------------------------------------------------------------------
 
 DOGWOOD_REV  ?= 5063bcc2d6d6cf5024d1b0498e6cc8ef52cbcf0c
 DOGWOOD_REPO ?= https://github.com/dogwood-policy/dogwood
-DOGWOOD      := .tools/bin/dogwood
+DOGWOOD      := .tools/bin/dogwood   # tests/conftest.py looks here first
 
 # rustup installs to ~/.cargo/bin but puts it on PATH only via a line in a shell
 # profile, which a non-interactive shell (make, an IDE task, a CI step) often
@@ -113,8 +113,8 @@ fmt:
 	$(UV) run ruff check --fix .
 	$(UV) run ruff format .
 
-# The pin has one home, this file. CI reads it from here to key its build cache,
-# so there is no second copy to fall out of step.
+# CI reads the pin from here rather than keeping a second copy. The README
+# quotes it for the reader and is the one place updated by hand.
 .PHONY: print-dogwood-rev
 print-dogwood-rev:
 	@echo $(DOGWOOD_REV)

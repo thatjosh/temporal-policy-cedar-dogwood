@@ -1,0 +1,23 @@
+// Types for the payment guardrails.
+//
+// Worth its own file. `validate_policies` checks policy.cedar against this, and
+// a mistyped attribute name in a policy is not cosmetic here: at run time it
+// makes the policy error, and an erroring policy is skipped, which means the
+// guardrail is gone. The schema turns that into a failure at build time.
+//
+// Cedar also validates each request against it, so a malformed context is
+// rejected rather than quietly evaluated as something else.
+
+entity Agent;
+entity Customer;
+entity Order in Customer;
+
+action pay
+  appliesTo {
+    principal: Agent,
+    resource: Order,
+    context: {
+      // Money is always whole cents. Cedar's Long is a signed 64-bit integer.
+      amount_cents: Long,
+    }
+  };

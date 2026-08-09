@@ -1,0 +1,227 @@
+"""Asking Cedar whether a proposed payment may execute.
+
+Division of labour: this module gathers facts and hands them to Cedar, and the
+policy file judges them. There is deliberately no branch here that inspects an
+amount. Every rule about money lives in the policy, which is what makes the
+policy the complete answer to what the agent may do.
+
+`build_gate()` in each version package is the seam. This class is shared today,
+but do not read that as a promise: v2 has to put a windowed total into the
+request context, and the context is built here, so v2 will change this file.
+That it cannot avoid doing so is itself part of the measurement.
+"""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+from cedarpy import (
+    Entities,
+    PolicySet,
+    Schema,
+    is_authorized,
+    policies_to_json_str,
+    validate_policies,
+)
+
+from temporal_policy.clock import require_utc
+from temporal_policy.decision import Decision, EngineUnavailableError
+from temporal_policy.money import Cents
+
+# The scenario is fixed: one agent, one action, one customer's orders. These are
+# constants rather than parameters because varying them would be a different
+# experiment, and a knob nobody turns is a knob that goes untested.
+AGENT = 'Agent::"support-bot"'
+ACTION_PAY = 'Action::"pay"'
+
+POLICY_FILE = "policy.cedar"
+SCHEMA_FILE = "payments.cedarschema"
+WORLD_FILE = "world.json"
+
+
+@dataclass(frozen=True)
+class Guardrail:
+    """A rule in the policy file, and how to say it to a human.
+
+    Cedar tells us which policy refused, by its `@id`. It cannot tell us what
+    that means in English, because cedarpy surfaces only the `id` annotation and
+    no others, so the wording has to live out here. Keeping the pairing explicit
+    means a rule added without an explanation is a startup error rather than a
+    denial that says "per-payment-cap" to a customer service agent.
+    """
+
+    id: str
+    explanation: str
+
+
+class CedarGate:
+    """One question: may this payment execute? Answered by the policy files.
+
+    Everything is parsed once, at construction. `decide` runs per payment, and
+    reparsing the policy each time would make the cost of the engine look like
+    the cost of the rule.
+    """
+
+    def __init__(self, policy_dir: Path, guardrails: tuple[Guardrail, ...]) -> None:
+        # Explicit encoding, because the default depends on the machine's locale
+        # and a policy file must never read differently on a different machine.
+        schema_source = (policy_dir / SCHEMA_FILE).read_text(encoding="utf-8")
+        policy_source = (policy_dir / POLICY_FILE).read_text(encoding="utf-8")
+        world_source = (policy_dir / WORLD_FILE).read_text(encoding="utf-8")
+
+        # Validated first: a policy that does not type-check is the more
+        # fundamental complaint, and reporting a pairing mismatch instead would
+        # send a reader after the wrong thing.
+        _require_valid(policy_source, schema_source, policy_dir)
+
+        self._schema = Schema.from_str(schema_source)
+        self._policies = PolicySet.from_str(policy_source)
+        # Passing the schema validates world.json against it, so a world that
+        # does not match the types the policies assume fails here rather than at
+        # the first payment.
+        self._world = Entities.from_json_str(world_source, schema_source)
+        self._explanations = _pair_explanations(policy_source, guardrails)
+
+    def decide(self, order_id: str, amount: Cents, at: datetime) -> Decision:
+        """Judge one proposed payment.
+
+        `at` is part of the decision interface both versions share. v1's rules
+        are not temporal, so no instant is offered to the engine and none is
+        used. It is still validated, so that a naive datetime is refused
+        identically in both versions rather than only once the rule that reads
+        it exists.
+        """
+        at = require_utc(at)
+
+        # `amount` is passed through, never coerced: `int("5000")` would turn a
+        # caller's type error into a payment.
+        request = {
+            "principal": AGENT,
+            "action": ACTION_PAY,
+            "resource": {"type": "Order", "id": order_id},
+            "context": {"amount_cents": amount},
+        }
+
+        try:
+            result = is_authorized(request, self._policies, self._world, schema=self._schema)
+            # Reading the result is inside the try as well, because it touches
+            # several more untyped cedarpy attributes, and a change in any of
+            # them should become "no decision", not an AttributeError.
+            return self._explain(result)
+        except Exception as failure:
+            # cedarpy raises for arguments it cannot even build a request from,
+            # such as an order id that is not a string. Catching broadly is
+            # right at this boundary: the library is untyped and does not
+            # document which exceptions it raises, and the alternative is
+            # leaking a foreign exception type into every caller. It converts to
+            # "no decision", never to "allowed".
+            message = f"Cedar could not evaluate the request: {failure}"
+            raise EngineUnavailableError(message) from failure
+
+    def _explain(self, result: Any) -> Decision:  # cedarpy AuthzResult, no stubs
+        """Turn Cedar's diagnostics into the answer the caller sees.
+
+        These branches report; they do not decide. The error check is the one
+        exception, and it is not a rule either: an error means at least one
+        policy was not applied, whether skipped part way through or never
+        reached because the request itself was refused. Either way no verdict
+        exists that every guardrail agreed to, so it is not relayed.
+        """
+        diagnostics = result.diagnostics
+        errors = [str(error) for error in diagnostics.errors]
+        if errors:
+            return Decision.deny(
+                "denied: the engine could not apply every rule to this request, so no "
+                f"verdict exists that all guardrails agreed to ({'; '.join(errors)})"
+            )
+
+        annotations = diagnostics.id_annotations_by_reason
+        # `reasons` are Cedar's internal policy handles; the annotation map turns
+        # each into the `@id` the policy file declares.
+        rule_ids = [str(annotations.get(reason, reason)) for reason in diagnostics.reasons]
+
+        # `bool(...)` because cedarpy ships no stubs, so mypy sees Any here and
+        # in `_require_valid`; the call is what makes the narrowing explicit.
+        if bool(result.allowed):
+            return Decision.allow(f"allowed by {', '.join(rule_ids)}: no guardrail objected")
+        if not rule_ids:
+            return Decision.deny(
+                "denied: no policy permits this agent to pay against this order"
+            )
+        return Decision.deny(
+            "denied: " + "; ".join(self._explanations[rule_id] for rule_id in rule_ids)
+        )
+
+
+def _declared_ids(policy_source: str) -> frozenset[str]:
+    """Every `@id` in the policy file, according to Cedar's own parser.
+
+    Parsed rather than pattern-matched. A regex over the source counts an `@id`
+    written inside a comment, and miscounting here would attach the wrong
+    explanation to a refusal.
+    """
+    parsed = json.loads(policies_to_json_str(policy_source))
+    if parsed["templates"]:
+        message = "policy templates are not supported: every rule must be a static policy"
+        raise EngineUnavailableError(message)
+
+    static: dict[str, Any] = parsed["staticPolicies"]
+    # Skipping unnamed rules rather than refusing them would be the worst of
+    # both: they are invisible to the pairing check below, and then Cedar names
+    # one as the reason for a denial and there is no explanation to look up.
+    unnamed = sorted(
+        h for h, policy in static.items() if "id" not in policy.get("annotations", {})
+    )
+    if unnamed:
+        message = f"policy declares rules with no @id: {', '.join(unnamed)}"
+        raise EngineUnavailableError(message)
+
+    return frozenset(str(policy["annotations"]["id"]) for policy in static.values())
+
+
+def _pair_explanations(policy_source: str, guardrails: tuple[Guardrail, ...]) -> dict[str, str]:
+    """Check the policy file and the explanations describe the same rule set.
+
+    Both directions are errors. A rule with no explanation would be reported to
+    a human by its identifier, and an explanation with no rule is a rule someone
+    deleted while believing it still applied.
+    """
+    declared = _declared_ids(policy_source)
+    explained = frozenset(guardrail.id for guardrail in guardrails)
+
+    # Two explanations for one rule collapse silently into whichever came last,
+    # so the sentence a customer reads would depend on tuple order.
+    if len(explained) != len(guardrails):
+        message = "the same rule is explained more than once"
+        raise EngineUnavailableError(message)
+
+    unexplained = sorted(declared - explained)
+    if unexplained:
+        message = f"policy declares rules with no explanation: {', '.join(unexplained)}"
+        raise EngineUnavailableError(message)
+
+    orphaned = sorted(explained - declared)
+    if orphaned:
+        listed = ", ".join(orphaned)
+        message = f"explanations given for rules the policy does not declare: {listed}"
+        raise EngineUnavailableError(message)
+
+    return {guardrail.id: guardrail.explanation for guardrail in guardrails}
+
+
+def _require_valid(policy_source: str, schema_source: str, policy_dir: Path) -> None:
+    """Refuse to serve decisions from a policy that does not type-check.
+
+    A policy whose condition cannot be evaluated is skipped at run time, and a
+    skipped guardrail is an absent one. Validation turns that into a failure
+    here, before any payment has been judged.
+    """
+    result = validate_policies(policy_source, schema_source)
+    if not bool(result.validation_passed):
+        detail = "; ".join(str(error) for error in result.errors)
+        message = f"{policy_dir / POLICY_FILE} does not validate against its schema: {detail}"
+        raise EngineUnavailableError(message)
