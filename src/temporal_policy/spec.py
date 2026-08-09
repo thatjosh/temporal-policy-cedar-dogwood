@@ -11,7 +11,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from itertools import pairwise
+from typing import Protocol
 
+from temporal_policy.decision import Decision
 from temporal_policy.money import Cents, cents
 
 # Every offset in the table is measured from here. A fixed instant rather than
@@ -163,3 +165,27 @@ CASES: tuple[Case, ...] = (
         pins_down="a negative payment is a charge against the customer",
     ),
 )
+
+
+class Decide(Protocol):
+    def __call__(self, order_id: str, amount: Cents, at: datetime) -> Decision: ...
+
+
+class Record(Protocol):
+    def __call__(self, order_id: str, amount: Cents, at: datetime) -> None: ...
+
+
+def run_case(case: Case, decide: Decide, record: Record | None = None) -> list[bool]:
+    """Decide a case's payments in order, recording the ones that executed.
+
+    Both engines and both versions are driven through here, so a difference in
+    results cannot come from a difference in how they were asked. `record` is
+    what a temporal rule reads back; v1 passes none, having nothing to read.
+    """
+    verdicts = []
+    for payment in case.payments:
+        decision = decide(ORDER, payment.amount, payment.at)
+        if decision.allowed and record is not None:
+            record(ORDER, payment.amount, payment.at)
+        verdicts.append(decision.allowed)
+    return verdicts

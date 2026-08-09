@@ -13,18 +13,14 @@ import pytest
 
 from temporal_policy.cedar.v1 import build_gate
 from temporal_policy.money import cents
-from temporal_policy.spec import BASE, CASES, ORDER, Case, Payment
+from temporal_policy.spec import BASE, CASES, ORDER, Case, Payment, run_case
 
 
 @pytest.mark.parametrize("case", CASES, ids=lambda case: f"{case.id}-{case.pins_down}")
 def test_spec_case(case: Case) -> None:
     gate = build_gate()
 
-    verdicts = [
-        gate.decide(ORDER, payment.amount, payment.at).allowed for payment in case.payments
-    ]
-
-    assert verdicts == list(case.v1)
+    assert run_case(case, gate.decide) == list(case.v1)
 
 
 def test_a_denial_explains_itself_in_words() -> None:
