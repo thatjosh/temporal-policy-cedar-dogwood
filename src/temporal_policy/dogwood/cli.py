@@ -70,8 +70,9 @@ class DogwoodCli:
         gone by then.
         """
         for event in events:
-            # One event must be one line, and a carriage return is the arm that
-            # earns this loop. A `\r` cannot split a line, so nothing downstream
+            # One event must be one line. A blank event contributes no verdict,
+            # so the count check catches it downstream; the carriage return is
+            # the arm that earns this loop. A `\r` cannot split a line, so nothing downstream
             # sees it, but an interior one is read as whitespace and retypes the
             # value beside it: `amount_cents: 50\r00` becomes a string, both
             # forbids fail to evaluate, and the engine answers ALLOW, exit 0.

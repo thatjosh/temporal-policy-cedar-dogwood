@@ -39,4 +39,4 @@ def test_a_denial_explains_itself_in_words(dogwood_binary: Path) -> None:
 
     assert not over_the_cap.allowed
     assert "$100.00" in over_the_cap.reason
-    assert "per_payment_cap" not in over_the_cap.reason
+    assert "per-payment-cap" not in over_the_cap.reason

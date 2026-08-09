@@ -104,9 +104,11 @@ def _require_matching_rules(
 ) -> None:
     """The policy file and the declared rules must agree, in order.
 
-    A rule renamed or inserted in one place and not the other does not fail; it
-    reports a neighbour's explanation to whoever was refused. Positional
-    identification is forced by the engine, leaving the two unchecked was not.
+    A rule inserted, removed or reordered in one place and not the other does
+    not fail; it reports a neighbour's explanation to whoever was refused. A
+    rename shifts nothing and misattributes nothing, and is caught here anyway
+    because this tuple is meant to document the file. Positional identification
+    is forced by the engine; leaving the two unchecked was not.
     """
     named = tuple(guardrail.id for guardrail in guardrails)
     if declared != named:

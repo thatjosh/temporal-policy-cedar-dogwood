@@ -5,9 +5,10 @@ policy files are, and the rules the file declares with the English for each.
 
 The tuple is in file order and must stay that way, because a Dogwood verdict
 names its rule by position where a Cedar one names it outright. That asymmetry
-is a property of the engines. The gate checks this tuple against the policy file
-at construction, so a rule renamed or inserted in one place and not the other is
-a startup error rather than a wrong sentence shown to whoever was refused.
+is a property of the engines. The gate checks this tuple against the policy at
+construction, so a rule inserted, removed or reordered in one place and not the
+other is a startup error rather than a neighbour's explanation shown to whoever
+was refused.
 """
 
 from pathlib import Path
