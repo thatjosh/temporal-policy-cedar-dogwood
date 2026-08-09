@@ -1,20 +1,16 @@
 """The case table both engines are judged by.
 
-This lives in the package rather than in the test tree on purpose. The
-experiment is "one rule, two engines, the same cases", so the cases are part of
-what this repo asserts, not a private detail of one test file. Both engines will
-import this table, which is what makes their results comparable: neither can
-quietly be tested against a friendlier set of inputs.
-
-Both the v1 and v2 columns are here even while only v1 is implemented. The table
-is one artifact and splitting it in half would invite the two halves to drift.
-The v2 column is the specification of what the temporal rule must do.
+In the package rather than the test tree, because the cases are part of what
+this repo asserts: neither engine can quietly be tested against a friendlier
+set of inputs. The v2 column is here already, as the specification of what the
+temporal rule must do.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from itertools import pairwise
 
 from temporal_policy.money import Cents, cents
 
@@ -47,10 +43,9 @@ class Payment:
 class Case:
     """A sequence of payments, and the verdict each must receive in each version.
 
-    Each case starts from a fresh world, and its payments are decided in order.
-    An allowed payment has executed and a denied one never happened, so only
-    allowed ones may count towards a later verdict. v1 has no memory, so nothing
-    yet carries an executed payment forward; the v2 harness must.
+    Each case starts from a fresh world and its payments are decided in order.
+    Only allowed payments may count towards a later verdict; v1 has no memory,
+    so nothing yet carries one forward and the v2 harness must.
     """
 
     id: str
@@ -60,14 +55,21 @@ class Case:
     pins_down: str
 
     def __post_init__(self) -> None:
-        # A verdict column that does not line up with the payments is a typo
-        # that would otherwise show up as a confusing test failure in one engine
-        # and be blamed on the engine.
+        # A column that does not line up with the payments is a typo that would
+        # otherwise surface as a confusing failure blamed on an engine.
         if not len(self.payments) == len(self.v1) == len(self.v2):
             message = (
                 f"{self.id}: {len(self.payments)} payments but "
                 f"{len(self.v1)} v1 verdicts and {len(self.v2)} v2 verdicts"
             )
+            raise ValueError(message)
+
+        # Dogwood's trace contract requires strictly increasing timestamps and
+        # does not enforce them, so a backdated case would measure something
+        # neither engine promises to get right.
+        offsets = [payment.after_minutes for payment in self.payments]
+        if any(later <= earlier for earlier, later in pairwise(offsets)):
+            message = f"{self.id}: payments must move forward in time, got {offsets}"
             raise ValueError(message)
 
 

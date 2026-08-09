@@ -7,10 +7,14 @@ this module with its v2 counterpart to see what the temporal rule cost Cedar.
 
 from pathlib import Path
 
-from temporal_policy.cedar.gate import CedarGate, Guardrail
+from temporal_policy.cedar.gate import CedarGate
+from temporal_policy.guardrail import Guardrail
 
 POLICY_DIR = Path(__file__).parent
 
+# The permit's explanation is never shown, in either engine: a permit that fails
+# to match yields an implicit deny naming no rule, and the gate falls back to
+# "no policy permits...". Declared because every rule needs one.
 GUARDRAILS = (
     Guardrail(
         id="agent-may-pay",

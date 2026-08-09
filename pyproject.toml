@@ -78,13 +78,6 @@ files = ["src", "tests"]
 strict = true
 warn_unreachable = true
 
-# cedarpy is a PyO3 extension and ships no stubs. Confined to the module that
-# imports it; every value crossing this boundary is parsed into a typed shape
-# before it reaches the rest of the code.
-[[tool.mypy.overrides]]
-module = ["cedarpy.*"]
-ignore_missing_imports = true
-
 # --------------------------------------------------------------------------
 # Tests
 # --------------------------------------------------------------------------
@@ -92,12 +85,13 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
-# `--import-mode=importlib` because the suite will hold parallel `tests/cedar/`
-# and `tests/dogwood/` trees containing same-named modules. pytest's default
-# `prepend` mode imports by munged basename and aborts collection outright on
-# that collision, and it gets there by inserting test directories into
-# `sys.path`, the implicit form of exactly the defect this rewrite set out to
-# remove. Set now so the layout does not have to fight it later.
+# The suite holds parallel `tests/cedar/` and `tests/dogwood/` trees with
+# same-named modules in them. The `__init__.py` files are what make those names
+# unambiguous: without them, pytest's default `prepend` mode imports by munged
+# basename and aborts collection on the collision, and mypy refuses for the same
+# reason. `--import-mode=importlib` is chosen on top of that because it imports a
+# test module by path without putting anything on `sys.path` at all, which is
+# the implicit form of a defect this rewrite set out to remove.
 addopts = "--strict-markers --strict-config --import-mode=importlib"
 
 # The marker selects; it does not skip. A plain `pytest` run still fails loudly

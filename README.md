@@ -9,8 +9,8 @@ Cedar that AWS open-sourced in August 2026.
 One rule, implemented twice, tested by the same cases, so the difference between
 the two is the measurement.
 
-> **Under construction.** The Cedar v1 implementation and the shared case table
-> have landed. Dogwood v1 is next, then the temporal rule in both.
+> **Under construction.** Both v1 implementations and the shared case table have
+> landed. The temporal rule, which is the point of the comparison, is next.
 
 ## The problem
 

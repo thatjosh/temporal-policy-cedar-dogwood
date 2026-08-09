@@ -1,9 +1,7 @@
 """What an engine answers, in a shape both engines share.
 
-Cedar returns this and Dogwood will. That is not a convenience: the experiment
-compares two engines answering the same question, and if each returned its own
-result type, every comparison would first have to translate, and the
-translation is where a difference could quietly be introduced.
+Not a convenience: if each returned its own type, every comparison would have
+to translate first, and the translation is where a difference could hide.
 """
 
 from __future__ import annotations
@@ -14,10 +12,8 @@ from dataclasses import dataclass
 class EngineUnavailableError(RuntimeError):
     """The engine could not be asked, or its answer could not be trusted.
 
-    Never means "denied". It means no decision exists, which callers must turn
-    into a denial themselves. Keeping the two apart matters because they need
-    different responses from a human: a denial is the system working, and this
-    is the system being broken.
+    Never means "denied". A denial is the system working; this is the system
+    being broken, and they need different responses from a human.
     """
 
 
@@ -37,10 +33,8 @@ class Decision:
     def __bool__(self) -> bool:
         """Refuse to be a condition.
 
-        Any object without this is truthy, so `if gate.decide(...): pay()` would
-        pay on every denial. In a payments gate that is the most expensive
-        default available, and there is no reading of `if decision:` obvious
-        enough to be worth allowing.
+        Without this, `if gate.decide(...): pay()` pays on every denial, and no
+        reading of `if decision:` is obvious enough to be worth allowing.
         """
         message = "a Decision is not a boolean: check .allowed"
         raise TypeError(message)

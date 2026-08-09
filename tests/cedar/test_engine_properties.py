@@ -19,10 +19,10 @@ from temporal_policy.cedar.gate import (
     SCHEMA_FILE,
     WORLD_FILE,
     CedarGate,
-    Guardrail,
 )
 from temporal_policy.cedar.v1 import GUARDRAILS, POLICY_DIR, build_gate
 from temporal_policy.decision import EngineUnavailableError
+from temporal_policy.guardrail import Guardrail
 from temporal_policy.money import cents
 from temporal_policy.spec import BASE, ORDER, UNKNOWN_ORDER
 
@@ -181,7 +181,8 @@ def test_each_rule_is_explained_by_its_own_sentence(
 
     Without this, two explanations can be swapped and every test still passes,
     so someone refused for paying nothing is told the agent may not pay against
-    that order. One input per rule, each tripping exactly that rule.
+    that order. One input per refusal a caller can actually be shown: the two
+    forbids by name, and the implicit deny that names no rule at all.
     """
     decision = build_gate().decide(order_id, cents(amount), BASE)
 

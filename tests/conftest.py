@@ -23,7 +23,7 @@ _BUILT_BY_MAKE = _REPO_ROOT / ".tools" / "bin" / "dogwood"
 _MARKER = "dogwood"
 
 
-def _candidates() -> list[tuple[str, Path | None]]:
+def engine_candidates() -> list[tuple[str, Path | None]]:
     """Every place the engine may be, in the order we trust it, each labelled.
 
     Returned rather than collapsed to a single answer so a failure can say what
@@ -55,10 +55,10 @@ def _usable(path: Path | None) -> bool:
     return path is not None and path.is_file() and os.access(path, os.X_OK)
 
 
-def _explain_missing() -> str:
+def _explain_missing(candidates: list[tuple[str, Path | None]]) -> str:
     tried = "\n".join(
         f"  {source:24} {path if path is not None else '(not set)'}"
-        for source, path in _candidates()
+        for source, path in candidates
     )
     return f"""\
 The Dogwood engine was not found, so its half of this suite cannot run.
@@ -96,26 +96,38 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
             item.add_marker(_MARKER)
 
 
-@pytest.fixture(scope="session")
-def dogwood_binary() -> Path:
-    """The Dogwood CLI, or a loud failure naming everywhere it was not.
+def select_engine(candidates: list[tuple[str, Path | None]]) -> Path:
+    """The engine to measure, or ``LookupError`` if there is not one.
 
     An unusable ``DOGWOOD_BIN`` stops the search rather than falling through to
     the next candidate. Falling through would answer a question nobody asked:
     someone who set the variable is telling us which engine to measure, and
-    quietly measuring a different one is the precise failure this fixture is
-    here to prevent. The suite would go green against a build its author did
-    not choose and does not know about.
+    quietly measuring a different one is the precise failure this lookup exists
+    to prevent. The suite would go green against a build its author did not
+    choose and does not know about.
+
+    Separate from the fixture, and raising rather than calling ``pytest.fail``,
+    so the decision can be exercised directly. A session fixture resolves once
+    per run and cannot be driven through its own failure cases.
     """
-    (_, override), *fallbacks = _candidates()
+    (_, override), *fallbacks = candidates
 
     if override is not None:
         if not _usable(override):
-            pytest.fail(_explain_missing(), pytrace=False)
+            raise LookupError(_explain_missing(candidates))
         return override
 
     for _, path in fallbacks:
         if _usable(path):
             assert path is not None  # narrowed by _usable
             return path
-    pytest.fail(_explain_missing(), pytrace=False)
+    raise LookupError(_explain_missing(candidates))
+
+
+@pytest.fixture(scope="session")
+def dogwood_binary() -> Path:
+    """The Dogwood CLI, or a loud failure naming everywhere it was not."""
+    try:
+        return select_engine(engine_candidates())
+    except LookupError as missing:
+        pytest.fail(str(missing), pytrace=False)

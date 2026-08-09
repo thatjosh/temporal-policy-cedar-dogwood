@@ -1,0 +1,39 @@
+// Payment guardrails, v1. Every rule about money is in this file.
+//
+// Deliberately the same shape as the Cedar policy beside it. Folding both
+// limits into one `permit ... when` is shorter but makes every refusal an
+// implicit deny that names no rule, which would look like an engine limit and
+// is not. Matched shapes keep the comparison about the temporal rule.
+
+// An order the entity store has never heard of is in no customer, so it matches
+// no permit and is denied. A bare `resource` would authorise payments against
+// order ids that do not exist, and the order id is what the agent controls.
+@id("agent-may-pay")
+permit (
+    principal == Support::Agent::"support-bot",
+    action == Support::Action::"Pay",
+    resource in Support::Customer::"cus-100"
+);
+
+// Zero moves nothing and a negative amount is a charge against the customer.
+@id("amount-must-be-positive")
+forbid (
+    principal,
+    action == Support::Action::"Pay",
+    resource
+)
+unless {
+    context.input.amount_cents > 0
+};
+
+// Finance's cap, inclusive, so $100.00 exactly is allowed. A literal read from
+// nothing, so no argument an agent sends raises its own ceiling.
+@id("per-payment-cap")
+forbid (
+    principal,
+    action == Support::Action::"Pay",
+    resource
+)
+unless {
+    context.input.amount_cents <= 10000
+};
