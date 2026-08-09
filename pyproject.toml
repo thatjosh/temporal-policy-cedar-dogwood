@@ -1,0 +1,109 @@
+[project]
+name = "temporal-policy-cedar-dogwood"
+version = "0.1.0"
+description = "How Cedar and Dogwood express a temporal authorization constraint, side by side."
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+authors = [{ name = "Joshua Ang" }]
+
+# Cedar is a library, so it is a real dependency. Dogwood ships no Python
+# binding, so it cannot appear here at all — it is an external binary the test
+# suite locates at run time (see tests/conftest.py). That asymmetry is the first
+# finding of this repo, visible in the dependency list before a line of code.
+dependencies = ["cedarpy>=4.8,<5"]
+
+[dependency-groups]
+dev = ["pytest>=8.3", "mypy>=1.13", "ruff>=0.8"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/temporal_policy"]
+
+# --------------------------------------------------------------------------
+# Lint
+# --------------------------------------------------------------------------
+
+[tool.ruff]
+line-length = 96
+src = ["src", "tests"]
+
+# `respect-gitignore` needs a git repository to consult, so it protects nothing
+# in a fresh unpacked tree, and `make dogwood` puts an entire upstream checkout
+# under `.tools/`. Without this, `make lint` can go red on someone else's code
+# and `make fmt` will rewrite it in place. Excluded explicitly so it holds
+# regardless of whether this tree happens to be a git repository.
+extend-exclude = [".tools", ".venv"]
+
+[tool.ruff.lint]
+select = [
+    "F",   # pyflakes
+    "E",   # pycodestyle
+    "W",
+    "I",   # import order
+    "N",   # naming
+    "UP",  # pyupgrade
+    "B",   # bugbear
+    "A",   # shadowed builtins
+    "C4",  # comprehensions
+    "DTZ", # naive datetimes — load-bearing here: a window that depends on the
+           # harness's local timezone is a window that means nothing
+    "EM",  # exception messages
+    "PT",  # pytest style
+    "PTH", # pathlib
+    "RET",
+    "RUF",
+    "S",   # bandit — flags the subprocess calls; each is silenced individually
+           # with a rationale, so the Dogwood subprocess boundary is annotated
+           # rather than hidden
+    "SIM",
+    "SLF", # private member access — tests must use the public surface
+    "TID",
+    "TRY",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101"] # assert is the point of a test
+
+# --------------------------------------------------------------------------
+# Types
+# --------------------------------------------------------------------------
+
+[tool.mypy]
+python_version = "3.12"
+files = ["src", "tests"]
+strict = true
+warn_unreachable = true
+
+# cedarpy is a PyO3 extension and ships no stubs. Confined to the module that
+# imports it; every value crossing this boundary is parsed into a typed shape
+# before it reaches the rest of the code.
+[[tool.mypy.overrides]]
+module = ["cedarpy.*"]
+ignore_missing_imports = true
+
+# --------------------------------------------------------------------------
+# Tests
+# --------------------------------------------------------------------------
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+# `--import-mode=importlib` because the suite has parallel `tests/cedar/` and
+# `tests/dogwood/` trees holding same-named modules. pytest's default `prepend`
+# mode imports by munged basename and aborts collection on the collision, and it
+# gets there by inserting test directories into `sys.path` — the implicit form
+# of exactly the defect this rewrite set out to remove.
+addopts = "--strict-markers --strict-config --import-mode=importlib"
+
+# The marker selects; it does not skip. A plain `pytest` run still fails loudly
+# when the engine is missing, because a suite that reports success having never
+# asked the engine anything is worse than a red build. The marker exists so CI
+# can run the Cedar half on a runner with no Rust toolchain.
+#
+# Applied automatically from the fixture — see tests/conftest.py — so it can
+# never disagree with what a test actually uses.
+markers = ["dogwood: needs the Dogwood engine (applied automatically)"]

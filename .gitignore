@@ -1,0 +1,14 @@
+.venv/
+.tools/
+
+# Working document for the build itself, not part of what is published.
+PLAN.md
+__pycache__/
+*.py[cod]
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+dist/
+build/
+*.egg-info/
+.DS_Store

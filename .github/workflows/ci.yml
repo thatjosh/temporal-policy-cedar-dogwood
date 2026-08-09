@@ -1,0 +1,76 @@
+name: ci
+
+# `push` is filtered to the default branch because a branch with an open pull
+# request fires both events, and this workflow compiles a Rust engine — running
+# it twice per commit for identical content is minutes of nothing.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Nothing here writes to the repository.
+permissions:
+  contents: read
+
+# A push that supersedes an in-flight run makes that run's answer irrelevant.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Everything that needs no Rust toolchain: lint, types, and the Cedar half.
+  cedar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      - run: make lint
+      - run: make types
+      - run: make test-cedar
+
+  # Dogwood ships no Python binding and publishes no release binaries, so the
+  # only way to verify its half is to compile the engine. This job runs the very
+  # same `make dogwood` a contributor runs, so the pinned revision has one home
+  # and CI cannot drift from the documented setup.
+  dogwood:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # Pinned, not `stable`. Upstream Dogwood declares no toolchain and commits
+      # no Cargo.lock, so the compiler version is one of the few build inputs
+      # this repo can actually hold still. See README on what remains unpinned.
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.97.1"
+
+      # Read the pin from the Makefile rather than repeating it here: a second
+      # copy is a second thing to forget when the pin moves.
+      - id: pin
+        run: echo "rev=$(make -s print-dogwood-rev)" >> "$GITHUB_OUTPUT"
+
+      # Keyed on the revision itself, so a new pin misses and rebuilds — exactly
+      # when a rebuild is wanted, and never otherwise. The registry and target
+      # directory are cached too: without them every miss is a cold compile of
+      # the whole dependency tree, not just of Dogwood.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            .tools/bin
+            .tools/.built-${{ steps.pin.outputs.rev }}
+            .tools/src/target
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: dogwood-${{ runner.os }}-${{ steps.pin.outputs.rev }}
+
+      - run: make dogwood
+      - run: uv sync --locked
+      - run: make test
