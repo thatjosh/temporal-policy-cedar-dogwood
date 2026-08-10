@@ -1,0 +1,44 @@
+[
+  {
+    "uid": {
+      "type": "Agent",
+      "id": "support-bot"
+    },
+    "attrs": {},
+    "parents": []
+  },
+  {
+    "uid": {
+      "type": "Customer",
+      "id": "cus-100"
+    },
+    "attrs": {},
+    "parents": []
+  },
+  {
+    "uid": {
+      "type": "Order",
+      "id": "ORD-1"
+    },
+    "attrs": {},
+    "parents": [
+      {
+        "type": "Customer",
+        "id": "cus-100"
+      }
+    ]
+  },
+  {
+    "uid": {
+      "type": "Order",
+      "id": "ORD-2"
+    },
+    "attrs": {},
+    "parents": [
+      {
+        "type": "Customer",
+        "id": "cus-100"
+      }
+    ]
+  }
+]

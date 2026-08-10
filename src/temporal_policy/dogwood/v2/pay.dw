@@ -1,0 +1,76 @@
+// Payment guardrails, v2: v1's rules plus a cap on the rolling hour.
+//
+// The three v1 rules are unchanged. The rolling cap is a fourth rule rather
+// than a clause folded into the permit, so a refusal still names the limit it
+// broke; folding would make it an implicit deny naming no rule.
+
+// An order the entity store has never heard of is in no customer, so it matches
+// no permit and is denied. A bare `resource` would authorise payments against
+// order ids that do not exist, and the order id is what the agent controls.
+@id("agent-may-pay")
+permit (
+    principal == Support::Agent::"support-bot",
+    action == Support::Action::"Pay",
+    resource in Support::Customer::"cus-100"
+);
+
+// Zero moves nothing and a negative amount is a charge against the customer.
+@id("amount-must-be-positive")
+forbid (
+    principal,
+    action == Support::Action::"Pay",
+    resource
+)
+unless {
+    context.input.amount_cents > 0
+};
+
+// Finance's cap, inclusive, so $100.00 exactly is allowed. A literal read from
+// nothing, so no argument an agent sends raises its own ceiling.
+@id("per-payment-cap")
+forbid (
+    principal,
+    action == Support::Action::"Pay",
+    resource
+)
+unless {
+    context.input.amount_cents <= 10000
+};
+
+// The same cap again, over everything paid on this order in the last hour.
+//
+// The sum counts the payment being decided: it is the trace's last event, and a
+// window is closed at both ends. That is forced rather than chosen. The
+// temporal sublanguage has comparisons and no arithmetic (`total +
+// context.input.amount_cents` is a parse error), so "the earlier payments plus
+// this one" cannot be written and "the total afterwards" can.
+//
+// Two things below are load-bearing and fail in silence. Rows are deduplicated
+// after projection onto the `for` domain, so without `(t: Timepoint)` two equal
+// amounts collapse into one row and the total reads low. And `callerResource`
+// is what scopes the sum to one order: drop it here and the predicate matches
+// every order's payments, pooling budgets that should be separate.
+//
+// Nothing here can tell an executed payment from an attempted one, because a
+// trace event carries no verdict. Logging only what executed is the harness's
+// job, and this rule is worth nothing without it.
+@id("rolling-hour-cap")
+forbid (
+    principal,
+    action == Support::Action::"Pay",
+    resource
+)
+unless temporal {
+    exists (total: Long). (
+        (sum a for (a: Long), (t: Timepoint). where (
+            formerly within 1h (
+                Support::Action::"Pay"::request{
+                    input.amount_cents: a,
+                    callerResource: resource
+                }
+                && tp(t)
+            )
+        )) == total
+        && total <= 10000
+    )
+};

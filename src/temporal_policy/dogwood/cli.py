@@ -12,6 +12,7 @@ import json
 import subprocess
 import tempfile
 from dataclasses import dataclass
+from itertools import pairwise
 from pathlib import Path
 from typing import Any
 
@@ -79,6 +80,7 @@ class DogwoodCli:
             if not event.strip() or "\n" in event or "\r" in event:
                 message = f"not a single trace event: {event[:60]!r}"
                 raise EngineUnavailableError(message)
+        _require_forward_in_time(events)
 
         with tempfile.TemporaryDirectory() as workdir:
             trace = Path(workdir) / "trace.log"
@@ -105,10 +107,11 @@ class DogwoodCli:
 
         verdicts = parse_verdicts(completed.stdout)
         if len(verdicts) != len(events):
-            # v1 writes only requests, the one decision kind, so one verdict per
-            # event holds. v2 breaks that premise rather than this check: a
-            # ledger is history and yields no verdicts, so it will have to count
-            # decision-kind events instead.
+            # Every event either version writes is a `::request`, the only kind
+            # either event schema marks as a decision, so one verdict per event
+            # holds. An event of any other kind contributes none, with no error
+            # and no warning, which would attribute one payment's verdict to
+            # another.
             message = (
                 f"`dogwood replay` returned {len(verdicts)} verdicts for {len(events)} events, "
                 "so at least one was not read as a decision point"
@@ -168,6 +171,40 @@ class DogwoodCli:
         except subprocess.TimeoutExpired as failure:
             message = f"`{self._binary}` did not answer within {self._timeout_seconds}s"
             raise EngineUnavailableError(message) from failure
+
+
+def _timestamp_of(event: str) -> int:
+    """The `@<epoch-seconds>` a trace line must open with."""
+    stamp = event.split(maxsplit=1)[0]
+    if not stamp.startswith("@") or not stamp[1:].lstrip("-").isdigit():
+        message = f"not a Dogwood event line: {event[:60]!r}"
+        raise EngineUnavailableError(message)
+    return int(stamp[1:])
+
+
+def _require_forward_in_time(events: tuple[str, ...]) -> None:
+    """Refuse a trace Dogwood does not promise to read correctly.
+
+    Events are replayed in file order and their timestamps are never checked
+    against it. The unsafe direction is a payment stamped before one already in
+    the trace: a window looks only backwards, so it sees none of the payments it
+    should have joined. Measured, two payments of $60.00 an hour apart are
+    allowed then denied, and both are allowed when the later is written first.
+
+    Equal stamps are refused because the contract is strict increase, not
+    because they were seen to misbehave; whole seconds are the finest stamp
+    Dogwood takes, so a second payment inside one second is refused with them.
+
+    A lone event is never parsed, which leaves a malformed line to the engine's
+    own diagnostic, and that one names the line number.
+    """
+    for earlier, later in pairwise(events):
+        if _timestamp_of(later) <= _timestamp_of(earlier):
+            message = (
+                f"trace timestamps do not move forward: {earlier[:40]!r} then {later[:40]!r}. "
+                "Dogwood replays events in file order and cannot detect it."
+            )
+            raise EngineUnavailableError(message)
 
 
 def _checked_verdict(value: object) -> str:

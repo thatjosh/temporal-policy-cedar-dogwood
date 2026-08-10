@@ -1,0 +1,33 @@
+// Types for the payment guardrails, v2.
+//
+// A mistyped attribute name is not cosmetic: at run time the policy errors, an
+// erroring policy is skipped, and the guardrail is gone. Validating against this
+// turns that into a build-time failure, and rejects a malformed request too.
+
+entity Agent;
+entity Customer;
+entity Order in Customer;
+
+action pay
+  appliesTo {
+    principal: Agent,
+    resource: Order,
+    context: {
+      // Money is always whole cents. Cedar's Long is a signed 64-bit integer.
+      amount_cents: Long,
+      // History, which Cedar cannot compute, summed by v2/ledger.py.
+      //
+      // Optional as a rule rather than a convenience. A source that cannot
+      // answer sends nothing and the policy's `has` guard refuses the payment;
+      // optional also promotes an unguarded read from a run-time skip to a
+      // validation error, so that guard cannot be dropped quietly.
+      window?: {
+        // Which order, and over what span. Without these a total for some other
+        // order or some other hour is indistinguishable from the right answer.
+        order: Order,
+        start: datetime,
+        end: datetime,
+        total_cents: Long,
+      }
+    }
+  };

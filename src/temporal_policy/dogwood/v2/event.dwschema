@@ -1,0 +1,19 @@
+// The shape of a logged event, replacing Dogwood's default event schema.
+//
+// The default declares `pin callerPrincipal ... = principal` on every kind,
+// which is a universal symmetric pin: every temporal leaf is then evaluated
+// over the slice of the trace belonging to the requesting principal, and the
+// pin is appended to every predicate whether or not the policy wrote it. Both
+// halves are wrong here. The cap is on the order, not on whoever paid, and an
+// event without `callerPrincipal` silently matches no pinned predicate, which
+// measured under the default schema makes the rolling cap permit everything.
+//
+// Only `request` is declared, because a payment is logged exactly one way. An
+// event of an undeclared kind yields no verdict, which `DogwoodCli.replay`
+// refuses; an undeclared *field* on a declared kind is accepted in silence, so
+// the fields below are the ones a predicate may correlate on and no more.
+decision event <A>::request {
+    ...inputs(A),
+    // What scopes the window to one order; `pay.dw` correlates on it.
+    callerResource: resourceType(A),
+}

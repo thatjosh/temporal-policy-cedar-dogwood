@@ -7,7 +7,8 @@ writing it.
 The mechanics differ. `replay` is the only evaluator the CLI exposes, and it
 decides a whole trace at once, so one decision is a replay of a trace whose
 last line is the proposed payment. In v1 that trace is one line; in v2 it
-becomes the whole ledger, which is where the shape starts to cost something.
+becomes the whole ledger, which is where the shape starts to cost something:
+every past payment is written, sent and judged again on every decision.
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ from pathlib import Path
 
 from temporal_policy.decision import Decision, EngineUnavailableError
 from temporal_policy.dogwood.cli import DogwoodCli, Verdict
+from temporal_policy.dogwood.ledger import Ledger, LedgerUnobtainableError
 from temporal_policy.dogwood.trace import payment_event
 from temporal_policy.guardrail import Guardrail
 from temporal_policy.money import Cents
@@ -26,22 +28,37 @@ SCHEMA_FILE = "schema.cedarschema"
 WORLD_FILE = "world.dwentities"
 
 
+def read_world(policy_dir: Path) -> str:
+    """The entity store, as the text a trace line inlines."""
+    return (policy_dir / WORLD_FILE).read_text(encoding="utf-8").strip()
+
+
 class DogwoodGate:
     """One question: may this payment execute? Answered by the policy file."""
 
     def __init__(
-        self, binary: Path, policy_dir: Path, guardrails: tuple[Guardrail, ...]
+        self,
+        binary: Path,
+        policy_dir: Path,
+        guardrails: tuple[Guardrail, ...],
+        ledger: Ledger | None = None,
+        event_schema: Path | None = None,
     ) -> None:
         # In file order, because a verdict names its rule by position. That much
         # the engine forces; checking the two agree is ours to do, and happens
         # at the end of this constructor.
         self._guardrails = guardrails
-        self._world = (policy_dir / WORLD_FILE).read_text(encoding="utf-8").strip()
-        self._cli = DogwoodCli(
-            binary=binary,
-            policy=policy_dir / POLICY_FILE,
-            schemas=("--policy-schema", str(policy_dir / SCHEMA_FILE)),
-        )
+        self._world = read_world(policy_dir)
+        self._ledger = ledger
+        # A version with no temporal rule passes no event schema and gets
+        # Dogwood's default; a version with one names its own file, because the
+        # default changes what a temporal rule means rather than rejecting it.
+        # Named rather than looked for, so a missing file fails validation here
+        # instead of silently restoring the default.
+        schemas: tuple[str, ...] = ("--policy-schema", str(policy_dir / SCHEMA_FILE))
+        if event_schema is not None:
+            schemas = (*schemas, "--event-schema", str(event_schema))
+        self._cli = DogwoodCli(binary=binary, policy=policy_dir / POLICY_FILE, schemas=schemas)
         _require_matching_rules(self._cli.declared_rule_ids(), guardrails, policy_dir)
 
     def decide(self, order_id: str, amount: Cents, at: datetime) -> Decision:
@@ -50,13 +67,22 @@ class DogwoodGate:
         A failure to reach a verdict is raised, never returned as a denial: a
         caller that confuses the two will either retry a refusal forever or read
         a broken engine as permission.
+
+        A log the temporal rule cannot read is the exception, and is a denial.
+        It is not the engine failing to answer; it is the payment failing to
+        come with evidence that the hour's budget is unspent, and the engine
+        cannot tell a lost log from a quiet hour.
         """
         event = payment_event(order_id, amount, at, self._world)
+        try:
+            history = () if self._ledger is None else self._ledger.events()
+        except LedgerUnobtainableError as lost:
+            return Decision.deny(f"denied: {lost}, so the rolling hour cannot be checked")
         # `[-1]` reads the proposed payment's verdict. v1 sends a single event, so
         # this is indistinguishable from `[0]` and no v1 test can tell them
         # apart; `DogwoodCli.replay` is where the ordering is pinned. It starts
         # mattering in v2, where the ledger precedes the proposal.
-        return self._explain(self._cli.replay((event,))[-1])
+        return self._explain(self._cli.replay((*history, event))[-1])
 
     def _explain(self, verdict: Verdict) -> Decision:
         """Turn one verdict into the answer a caller sees.
@@ -71,7 +97,10 @@ class DogwoodGate:
                 f"verdict exists that all of them agreed to ({'; '.join(verdict.errors)})"
             )
 
-        named = [self._name_of(index) for index in verdict.determining_rules]
+        # Sorted into file order because the engine's own order is not stable:
+        # the same over-cap payment, replayed repeatedly, comes back as rules
+        # [2, 3] and as [3, 2]. Unsorted, one refusal is worded two ways.
+        named = [self._name_of(index) for index in sorted(verdict.determining_rules)]
         if verdict.allowed:
             joined = ", ".join(rule.id for rule in named)
             return Decision.allow(f"allowed by {joined}: no guardrail objected")

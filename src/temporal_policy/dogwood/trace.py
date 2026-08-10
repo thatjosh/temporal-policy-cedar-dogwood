@@ -75,8 +75,11 @@ def payment_event(order_id: str, amount: Cents, at: datetime, world: str) -> str
     """One executed or proposed payment, as a trace line.
 
     ``request_context`` is what a ``context.*`` reference reads. The trailing
-    group is the event's own record, which a temporal predicate matches on; v1
-    has no such predicate.
+    group is the event's own record, which a temporal predicate matches on.
+
+    ``callerResource`` is written for v2's window to correlate on; an event
+    without it is silently summed as nothing. One renderer serves both versions
+    rather than two that could drift.
 
     ``world`` is the entity store, inlined into every event. Cedar loads one
     once at construction; Dogwood has nowhere to put one, so it is repeated on
@@ -89,7 +92,7 @@ def payment_event(order_id: str, amount: Cents, at: datetime, world: str) -> str
         f"scope(principal: {AGENT}, resource: {order}) "
         f"{world} "
         f"request_context({payload}) "
-        f"{ACTION_PAY}::request({payload})"
+        f"{ACTION_PAY}::request({payload}, callerResource: {order})"
     )
 
 

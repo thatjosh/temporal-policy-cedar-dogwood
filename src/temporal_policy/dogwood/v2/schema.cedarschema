@@ -1,0 +1,26 @@
+// The shape of the `pay` tool as the policy engine sees it.
+namespace Support {
+  type PayInput = {
+    amount_cents: Long,
+    // The tool takes a free-text reason; no rule reads it, so the harness never
+    // sends it. Optional because the tool's contract is, not because of that:
+    // Dogwood does not type-check a trace's request_context against this schema.
+    reason?: String
+  };
+
+  // The customer-support agent. `support-bot` is the only instance.
+  entity Agent;
+
+  // The permit is scoped to one customer, so an order in no customer matches
+  // nothing. Without this containment there is no way to say "orders we know".
+  entity Customer;
+  entity Order in [Customer];
+
+  action "Pay" appliesTo {
+    principal: [Agent],
+    resource: [Order],
+    context: {
+      input: PayInput
+    }
+  };
+}

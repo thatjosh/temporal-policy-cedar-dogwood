@@ -9,9 +9,6 @@ Cedar that AWS open-sourced in August 2026.
 One rule, implemented twice, tested by the same cases, so the difference between
 the two is the measurement.
 
-> **Under construction.** Both v1 implementations and the shared case table have
-> landed. The temporal rule, which is the point of the comparison, is next.
-
 ## The problem
 
 Imagine an agent whose job is to approve customer refunds automatically. You are
@@ -55,7 +52,7 @@ and most policy engines remember nothing at all. That is deliberate: an engine
 with no memory is easy to test, and gives the same answer every time you ask it
 the same question.
 
-## What this repo sets out to show
+## What this repo shows
 
 Dogwood states v2 in the policy file, because its policies read an event log.
 Cedar cannot. A Cedar decision is a pure function of the request, the policies
@@ -76,8 +73,29 @@ payment reached the log and that each event carries the fields the rule
 names.](docs/img/dogwood-counts-inside.png)
 
 Neither engine escapes trust. They place it differently: Cedar trusts a number
-you computed, Dogwood trusts the log you kept. What the split costs Cedar, in
-files and in what can be unit tested, is the measurement.
+you computed, Dogwood trusts the log you kept.
+
+### What it cost
+
+Both engines are implemented, and both answer all twelve cases identically.
+
+|  | Cedar | Dogwood |
+|---|---|---|
+| policy, v1 to v2 | 26 to 47 statements | 24 to 44 |
+| Python the rule needs | `ledger.py`, 49 statements | `ledger.py`, 65 |
+| the gate | +92 lines | unchanged |
+
+Counting lines alone would suggest Dogwood cost more, which is the wrong
+reading. Both engines need a ledger, because a rolling window needs a record of
+what was paid. The difference is what that Python does. Cedar's computes the
+total, which is half the rule, so the window in `ledger.py` and the window in
+`policy.cedar` must agree and nothing but a test says so. Dogwood's only stores
+and replays events; the summing stays in the policy.
+
+Dogwood pays elsewhere instead. Three files must name the same field for the
+window to be scoped to one order, and only one of the three mistakes is caught:
+drop it from the predicate and every order shares a budget, drop it from the
+written event and the sum silently reads zero.
 
 ## Setup
 
