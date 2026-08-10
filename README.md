@@ -1,5 +1,7 @@
 # temporal-policy-cedar-dogwood
 
+[![ci](https://github.com/thatjosh/temporal-policy-cedar-dogwood/actions/workflows/ci.yml/badge.svg)](https://github.com/thatjosh/temporal-policy-cedar-dogwood/actions/workflows/ci.yml)
+
 An experiment in writing **temporal constraints**, meaning authorization rules
 about what has already happened, in two engines:
 [Cedar](https://www.cedarpolicy.com/) and
@@ -54,11 +56,33 @@ the same question.
 
 ## What this repo shows
 
-Dogwood states v2 in the policy file, because its policies read an event log.
-Cedar cannot. A Cedar decision is a pure function of the request, the policies
-and the entity store, and none of those is history. So the rule splits in two.
-Your code computes the rolling total, the policy compares it to the cap, and
-from then on the rule holds only while both halves agree.
+### Cedar keeps the engine stateless, so you hold the state yourself
+
+v1 is a single short policy, and that ease is why Cedar is the default answer
+when someone asks what should sit in front of an agent's tools. v2 stops being
+easy, and not because the syntax is hard: you cannot write the rule. Part of it
+goes in the policy and part in your application code, and from then on it holds
+only while both halves agree.
+
+The reason is one property. A Cedar decision is a pure function of three inputs,
+the request, the policies and the entity store, and none of them is history. It
+cannot look anything up, and it has no count or sum.
+
+That is deliberate rather than an omission. Statelessness is what lets a policy
+set be checked by an SMT solver without running it, and Cedar names that
+analysis as a design goal. The datetime extension shows how far the commitment
+goes: it was accepted and shipped, and a `currentTime()` function was still
+turned down inside it, on exactly this ground.
+
+> However, `currentTime()` is stateful, i.e. not pure, and cannot be modeled in
+> SMT.
+>
+> Cedar RFC 0080, datetime extension
+
+So a temporal constraint in Cedar is possible; it just stops living in one
+place. You keep the engine stateless and make the input stateful. Your code
+queries the ledger, sums what this order paid in the last hour, and hands Cedar
+that number as a fact on the request. The policy compares it to the cap.
 
 ![Two boxes. On the left, your own code holds the ledger, filters it to this
 order and the last sixty minutes, and produces a total of $60. A single arrow
@@ -66,36 +90,28 @@ carries that number across into the policy engine on the right, which verifies
 the window is for the right order and starts sixty minutes before the request,
 but trusts that the total itself is correct.](docs/img/cedar-counts-outside.png)
 
+The engine can check where the number came from. It cannot check the number.
+Everything to the left of that arrow is inside the trust boundary, and in Cedar
+that is your code.
+
+### Dogwood moves the state into the engine
+
+[Dogwood](https://github.com/dogwood-policy/dogwood) is a temporal superset of
+Cedar, open-sourced on 6 August 2026: the same language, plus a kind of clause
+that can read an event log. The rolling cap becomes something the policy states
+by itself, as one clause appended to the per-payment rule. No new module, and the sixty minutes written once, because
+nothing else needs to know it.
+
+The difference is not brevity. There is no second half to keep in sync.
+
 ![The same two boxes with the counting relocated. On the left, your event log
 holds one record per executed payment. An arrow carries the raw events into the
 policy engine, which now computes the total itself, but trusts that every
 payment reached the log and that each event carries the fields the rule
 names.](docs/img/dogwood-counts-inside.png)
 
-Neither engine escapes trust. They place it differently: Cedar trusts a number
-you computed, Dogwood trusts the log you kept.
-
-### What it cost
-
-Both engines are implemented, and both answer all twelve cases identically.
-
-|  | Cedar | Dogwood |
-|---|---|---|
-| policy, v1 to v2 | 26 to 47 statements | 24 to 44 |
-| Python the rule needs | `ledger.py`, 49 statements | `ledger.py`, 65 |
-| the gate | +92 lines | unchanged |
-
-Counting lines alone would suggest Dogwood cost more, which is the wrong
-reading. Both engines need a ledger, because a rolling window needs a record of
-what was paid. The difference is what that Python does. Cedar's computes the
-total, which is half the rule, so the window in `ledger.py` and the window in
-`policy.cedar` must agree and nothing but a test says so. Dogwood's only stores
-and replays events; the summing stays in the policy.
-
-Dogwood pays elsewhere instead. Three files must name the same field for the
-window to be scoped to one order, and only one of the three mistakes is caught:
-drop it from the predicate and every order shares a budget, drop it from the
-written event and the sum silently reads zero.
+The counting moved inside the boundary, and one line of trust became two. Cedar
+trusts one number. Dogwood trusts the entire log it is given.
 
 ## Setup
 
@@ -103,60 +119,47 @@ written event and the sum silently reads zero.
     make dogwood    # fetch and compile the Dogwood engine into .tools/
     make check      # lint, types, and the full suite
 
-You need [uv](https://docs.astral.sh/uv/) and a Rust toolchain; Python is pinned
-and uv fetches it. `make dogwood` builds the pinned revision into `.tools/`
-(gitignored) in about a minute, installing nothing system-wide, leaving no
-`PATH` to edit, and a second run is a no-op. If `cargo` is missing it says how
-to get it. If rustup installed it but your shell never exported it, `make` looks
-in `~/.cargo/bin` anyway.
-
-The suite finds the engine in `.tools/` before `PATH`. `DOGWOOD_BIN` overrides
-both and is then authoritative, so you always know which engine produced a
-result. No Rust toolchain and don't want one? `make test-cedar`.
+You need [uv](https://docs.astral.sh/uv/) and a Rust toolchain. `make dogwood`
+clones the pinned revision into `.tools/` and builds it there, which takes about
+a minute. Without a Rust toolchain, `make test-cedar` runs the half that needs
+no engine.
 
 **Why Dogwood needs its own step.** Cedar is a Python library, so `uv sync`
-installs it. Dogwood ships no Python binding and publishes no release binaries,
-so it must be compiled and then driven as a subprocess. That asymmetry is the
-first thing this experiment turns up, and you meet it before reading any code.
+installs it. [Dogwood](https://github.com/dogwood-policy/dogwood) ships no
+Python binding and publishes no release binaries, so it must be compiled from
+source and driven as a subprocess. That asymmetry is the first thing this
+experiment turns up, and you meet it before reading any code.
 
-## Commands
+The Dogwood tests fail loudly when the engine is missing, rather than skipping.
+A suite that reports success having never asked the engine anything is worse
+than a red one.
 
-| Command | What it does |
-|---|---|
-| `make check` | lint, types, full suite; run before a PR |
-| `make test` | the whole suite; **requires** the engine |
-| `make test-cedar` | only the half that needs no engine |
-| `make lint` / `make types` / `make fmt` | `ruff` · `mypy --strict` · apply fixes |
-| `make dogwood` / `make clean` | build the pinned engine · drop it, keep the build cache |
-| `make distclean` | remove `.tools/` entirely, including the source clone |
+## Where the code is
 
-Dogwood tests **fail loudly** when the engine is missing rather than skipping. A
-suite that reports success having never asked the engine anything is worse than
-a red one.
+    src/temporal_policy/
+      spec.py            the case table both engines are judged by
+      cedar/             gate; v1/ and v2/ hold the policies and v2's ledger
+      dogwood/           gate, CLI wrapper, trace writer, ledger; v1/ and v2/
+                         hold the policies and schemas
+
+`spec.py` is the place to start: it is the specification, and both engines are
+held to it.
 
 ## Notes
 
 **There is no LLM here.** No API calls, no model, no `anthropic` dependency. The
 behaviour under test, an agent splitting one payment into several legal ones, is
-fixed sequences of payments in the tests. Everything else is real: both engines
-run the actual policy files in this repo, and every result comes from a run.
+fixed sequences of payments in the tests. Both engines are real, running the
+policy files in this repo, and every result comes from a run.
 
-**What is pinned, and what is not.** Pinned: the Dogwood revision
-(`DOGWOOD_REV` in the `Makefile`, read by CI so there is one copy), the Rust
-toolchain, Python, and every Python dependency via `uv.lock`. Not pinned:
-Dogwood's own Rust dependencies, because upstream commits no `Cargo.lock`, so
-`cargo` re-resolves the tree on every cold build and `--locked` has nothing to
-work with. The same revision can compile into a different binary months from
-now. Results here came from `dogwood 1.0.0` at `5063bcc`, built with
-`rustc 1.97.1`.
+**Pinning the revision does not pin the build.** Upstream commits no
+`Cargo.lock`, so `cargo` re-resolves Dogwood's dependency tree on every cold
+build and `--locked` has nothing to work with. The same revision can compile
+into a different binary months from now.
 
-**Tooling.** `uv`, `ruff`, `mypy --strict`, `pytest`, and GitHub Actions, with
-one job that needs no Rust and one that builds Dogwood from the pin. Two `ruff`
-groups are load-bearing rather than stylistic. `DTZ` bans naive datetimes, since
-a window whose meaning depends on the machine's timezone is not a window. `S`
-flags every `subprocess` call, which is where the Dogwood engine lives, and each
-is silenced individually with a reason so the boundary is annotated instead of
-hidden.
+Every result here came from Dogwood 1.0.0, built with `rustc 1.97.1` from
+[dogwood-policy/dogwood@5063bcc](https://github.com/dogwood-policy/dogwood/commit/5063bcc2d6d6cf5024d1b0498e6cc8ef52cbcf0c),
+the upstream commit `make dogwood` and CI both build.
 
 ## Licence
 
